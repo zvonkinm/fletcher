@@ -1,0 +1,50 @@
+// src/db/schema.js
+// Applies the database schema. Safe to call on every startup — uses
+// CREATE TABLE IF NOT EXISTS throughout.
+
+export async function applySchema(db) {
+  // ── Songs ──────────────────────────────────────────────────────────────
+  await db.run(`
+    CREATE TABLE IF NOT EXISTS songs (
+      id              TEXT PRIMARY KEY,   -- e.g. "1023", "1023#Am"
+      idx             TEXT NOT NULL,      -- 4-digit index string e.g. "1023"
+      key_variant     TEXT,               -- e.g. "Am", "Eb" — NULL for base
+      title           TEXT NOT NULL,
+      song_type       TEXT NOT NULL,      -- "Arrangements" | "Instrumentals" | "Lead Sheet"
+      subtype         TEXT NOT NULL,      -- "Swing" | "12 Bar" | "Bluesy"
+      drive_folder_id TEXT NOT NULL,
+      parts           TEXT NOT NULL DEFAULT '{}',  -- JSON: {partName: fileId}
+      blacklisted     INTEGER NOT NULL DEFAULT 0,
+      active          INTEGER NOT NULL DEFAULT 1,
+      last_synced     INTEGER             -- Unix timestamp ms
+    )
+  `)
+
+  // ── Gigs ───────────────────────────────────────────────────────────────
+  await db.run(`
+    CREATE TABLE IF NOT EXISTS gigs (
+      id             TEXT PRIMARY KEY,    -- slug e.g. "vtjb_highball_042026"
+      name           TEXT NOT NULL,
+      date           TEXT,                -- ISO 8601
+      venue          TEXT,
+      notes          TEXT,
+      setlist        TEXT NOT NULL DEFAULT '[]',        -- JSON: string[]
+      print_sublists TEXT NOT NULL DEFAULT '[]'         -- JSON: {name, song_ids[]}[]
+    )
+  `)
+
+  // ── Settings (key/value store) ─────────────────────────────────────────
+  await db.run(`
+    CREATE TABLE IF NOT EXISTS settings (
+      key   TEXT PRIMARY KEY,
+      value TEXT NOT NULL    -- JSON-encoded value
+    )
+  `)
+
+  // ── Indexes ────────────────────────────────────────────────────────────
+  await db.run(`CREATE INDEX IF NOT EXISTS idx_songs_idx ON songs(idx)`)
+  await db.run(`CREATE INDEX IF NOT EXISTS idx_songs_type ON songs(song_type, subtype)`)
+  await db.run(`CREATE INDEX IF NOT EXISTS idx_gigs_date ON gigs(date DESC)`)
+
+  console.log('[db/schema] Schema applied')
+}
