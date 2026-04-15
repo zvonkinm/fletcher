@@ -1,0 +1,67 @@
+/* NavBar component */
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 24px;
+  height: 56px;
+  background: #fff;
+  border-bottom: 1px solid #D0D9E8;
+  box-shadow: 0 1px 4px rgba(27,43,75,0.06);
+  flex-shrink: 0;
+}
+
+.brand {
+  font-weight: 700;
+  font-size: 20px;
+  color: #1B2B4B;
+  letter-spacing: -0.5px;
+  margin-right: 24px;
+}
+
+.links {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+}
+
+.link {
+  padding: 0 16px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 14px;
+  font-family: Arial, sans-serif;
+  color: #4A5568;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s;
+}
+
+.link:hover {
+  color: #1B2B4B;
+}
+
+.linkActive {
+  color: #1B2B4B;
+  border-bottom-color: #C9A84C;
+}
+
+.signOut {
+  background: none;
+  border: 1px solid #D0D9E8;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 13px;
+  color: #4A5568;
+  cursor: pointer;
+  font-family: Arial, sans-serif;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.signOut:hover {
+  border-color: #1B2B4B;
+  color: #1B2B4B;
+}
