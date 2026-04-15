@@ -1,19 +1,23 @@
 // src/App.jsx
 import React, { useEffect, useState } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { initGapi, initGsi, requestToken, signOut, isSignedIn } from './auth/google.js'
+import { initGsi, initGapi, triggerSignIn, signOut, isSignedIn,
+         handleRedirectCallback, restoreSession } from './auth/google.js'
 import { db } from './db/index.js'
 import NavBar from './components/NavBar.jsx'
 import Repertoire from './views/Repertoire.jsx'
 import Setlist from './views/Setlist.jsx'
 import Settings from './views/Settings.jsx'
 
+// Initialise GSI once at module level
+const gsiReady = initGsi()
+
 export default function App() {
-  const [authState, setAuthState] = useState('idle')   // idle | signing-in | signed-in | error
+  const [authState, setAuthState] = useState('loading') // loading | idle | signed-in | error
   const [dbReady, setDbReady] = useState(false)
   const [error, setError] = useState(null)
 
-  // ── Initialise DB ────────────────────────────────────────────────────────
+  // ── Initialise DB ──────────────────────────────────────────────────────────
   useEffect(() => {
     db.ready
       .then(() => setDbReady(true))
@@ -23,27 +27,44 @@ export default function App() {
       })
   }, [])
 
-  // ── Initialise Google clients ─────────────────────────────────────────────
+  // ── Auth init — handle redirect callback or restore session ───────────────
   useEffect(() => {
-    Promise.all([initGapi(), initGsi()])
-      .then(() => {
-        // If we already have a token from this session, skip the sign-in screen
-        if (isSignedIn()) setAuthState('signed-in')
-      })
-      .catch((err) => {
-        console.error('[App] Google init failed:', err)
-        setError(`Google API failed to load: ${err.message}`)
-      })
+    async function initAuth() {
+      await gsiReady
+
+      // 1. Check if we're returning from a Google redirect (async — exchanges code via PKCE)
+      const fromRedirect = await handleRedirectCallback()
+      if (fromRedirect) {
+        await initGapi()
+        setAuthState('signed-in')
+        return
+      }
+
+      // 2. Try to restore an existing session from storage
+      if (restoreSession()) {
+        await initGapi()
+        setAuthState('signed-in')
+        return
+      }
+
+      // 3. No session — show sign-in screen
+      setAuthState('idle')
+    }
+
+    initAuth().catch((err) => {
+      console.error('[App] Auth init failed:', err)
+      setAuthState('idle') // degrade gracefully to sign-in screen
+    })
   }, [])
 
+  // ── Sign in — triggers full-page redirect to Google ───────────────────────
   async function handleSignIn() {
-    setAuthState('signing-in')
     try {
-      await requestToken()
-      setAuthState('signed-in')
+      // triggerSignIn generates PKCE asynchronously then navigates away.
+      // Nothing after this runs — the page redirects to Google.
+      await triggerSignIn()
     } catch (err) {
-      console.error('[App] Sign-in failed:', err)
-      setAuthState('error')
+      console.error('[App] Sign-in redirect failed:', err)
       setError(`Sign-in failed: ${err.message}`)
     }
   }
@@ -53,7 +74,7 @@ export default function App() {
     setAuthState('idle')
   }
 
-  // ── Error state ───────────────────────────────────────────────────────────
+  // ── Error state ────────────────────────────────────────────────────────────
   if (error) {
     return (
       <div style={styles.center}>
@@ -68,37 +89,33 @@ export default function App() {
     )
   }
 
-  // ── Loading state ─────────────────────────────────────────────────────────
-  if (!dbReady) {
+  // ── Loading / auth-checking state ──────────────────────────────────────────
+  if (authState === 'loading' || !dbReady) {
     return (
       <div style={styles.center}>
         <p style={{ color: '#4A5568', fontFamily: 'Arial, sans-serif' }}>
-          Initialising database…
+          {!dbReady ? 'Initialising database…' : 'Checking session…'}
         </p>
       </div>
     )
   }
 
-  // ── Sign-in screen ────────────────────────────────────────────────────────
+  // ── Sign-in screen ─────────────────────────────────────────────────────────
   if (authState !== 'signed-in') {
     return (
       <div style={styles.center}>
         <div style={styles.loginCard}>
           <h1 style={styles.logo}>Fletcher</h1>
-          <p style={styles.subtitle}>Vintage Ties Band Manager</p>
-          <button
-            style={{ ...styles.btn, opacity: authState === 'signing-in' ? 0.6 : 1 }}
-            disabled={authState === 'signing-in'}
-            onClick={handleSignIn}
-          >
-            {authState === 'signing-in' ? 'Signing in…' : 'Sign in with Google'}
+          <p style={styles.subtitle}>Band Manager</p>
+          <button style={styles.btn} onClick={handleSignIn}>
+            Sign in with Google
           </button>
         </div>
       </div>
     )
   }
 
-  // ── Main app ──────────────────────────────────────────────────────────────
+  // ── Main app ───────────────────────────────────────────────────────────────
   return (
     <div style={styles.app}>
       <NavBar onSignOut={handleSignOut} />
@@ -114,7 +131,7 @@ export default function App() {
   )
 }
 
-// ── Inline styles (minimal — real styling comes in Step 2) ─────────────────
+// ── Styles ─────────────────────────────────────────────────────────────────
 const styles = {
   app: {
     display: 'flex',

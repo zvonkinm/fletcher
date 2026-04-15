@@ -1,8 +1,21 @@
 // src/auth/google.js
-// Handles Google Identity Services (GSI) sign-in and gapi Drive client init.
+// Google OAuth 2.0 — PKCE authorization code flow using a Desktop app client.
+//
+// Desktop app OAuth client with PKCE + Cloudflare Worker for token exchange.
+// The client secret lives only in Cloudflare environment variables —
+// never in browser code or the GitHub repo.
+//
+// Flow:
+//   1. triggerSignIn() generates a PKCE challenge and redirects to Google
+//   2. Google redirects back to /fletcher/?code=...
+//   3. handleRedirectCallback() exchanges the code + verifier for a token
 
 export const CLIENT_ID =
-  '1089043244006-h9kskqft3tn80j49m2fgl2d5j19rgvrm.apps.googleusercontent.com'
+  '1089043244006-3lm74io6nubokgkpv94uqg0kavo9s1ad.apps.googleusercontent.com'
+
+// Token exchange is handled by a Cloudflare Worker — the client secret
+// never appears in browser code or the GitHub repo.
+const AUTH_WORKER_URL = 'https://fletcher-auth-worker.zvonkinm.workers.dev/token'
 
 export const SCOPES = [
   'https://www.googleapis.com/auth/drive.readonly',
@@ -12,88 +25,198 @@ export const SCOPES = [
 const DISCOVERY_DOC =
   'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'
 
-// ── Internal state ────────────────────────────────────────────────────────
+const REDIRECT_URI = window.location.origin + '/fletcher/'
 
-let _tokenClient = null
+// ── Internal state ─────────────────────────────────────────────────────────
 let _accessToken = null
 let _gapiReady = false
 
-// ── Helpers ───────────────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────────
 
-/** Wait for a global to appear (gapi / google are loaded async). */
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) { resolve(); return }
+    const s = document.createElement('script')
+    s.src = src
+    s.onload = resolve
+    s.onerror = () => reject(new Error(`Failed to load: ${src}`))
+    document.head.appendChild(s)
+  })
+}
+
 function waitForGlobal(name, timeout = 10_000) {
   return new Promise((resolve, reject) => {
     const start = Date.now()
     const check = () => {
-      if (window[name]) return resolve(window[name])
+      if (window[name]) return resolve()
       if (Date.now() - start > timeout)
-        return reject(new Error(`Timed out waiting for window.${name}`))
+        return reject(new Error(`Timed out waiting for ${name}`))
       setTimeout(check, 100)
     }
     check()
   })
 }
 
-// ── Public API ────────────────────────────────────────────────────────────
+// PKCE — generates a random verifier and its SHA-256 challenge
+async function generatePKCE() {
+  const verifier = Array.from(crypto.getRandomValues(new Uint8Array(32)))
+    .map(b => b.toString(16).padStart(2, '0')).join('')
+  const encoded = new TextEncoder().encode(verifier)
+  const digest = await crypto.subtle.digest('SHA-256', encoded)
+  const challenge = btoa(String.fromCharCode(...new Uint8Array(digest)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
+  return { verifier, challenge }
+}
+
+// ── Public API ─────────────────────────────────────────────────────────────
 
 /**
- * Initialise the gapi client with the Drive discovery doc.
- * Safe to call multiple times — resolves immediately if already ready.
+ * Minimal init — just loads the GSI script so gapi can use it later.
+ */
+export async function initGsi() {
+  await loadScript('https://accounts.google.com/gsi/client')
+  await waitForGlobal('google')
+  console.log('[auth] GSI ready')
+}
+
+/**
+ * Check if Google redirected back with an auth code in the URL.
+ * Call on every app load. Returns true if a token was successfully obtained.
+ */
+export async function handleRedirectCallback() {
+  const params = new URLSearchParams(window.location.search)
+  const code = params.get('code')
+  const returnedState = params.get('state')
+
+  if (!code) return false
+
+  // Validate state to prevent CSRF attacks
+  const storedState = sessionStorage.getItem('oauth_state')
+  const verifier = sessionStorage.getItem('pkce_verifier')
+
+  // Clean URL and storage immediately
+  history.replaceState({}, '', window.location.pathname)
+  sessionStorage.removeItem('oauth_state')
+  sessionStorage.removeItem('pkce_verifier')
+
+  if (returnedState !== storedState) {
+    console.error('[auth] State mismatch — ignoring redirect')
+    return false
+  }
+
+  if (!verifier) {
+    console.error('[auth] No PKCE verifier found')
+    return false
+  }
+
+  console.log('[auth] Exchanging code for token via Cloudflare Worker...')
+
+  // Call our Cloudflare Worker — it holds the client secret server-side
+  const response = await fetch(AUTH_WORKER_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      code,
+      code_verifier: verifier,
+      redirect_uri: REDIRECT_URI,
+    }),
+  })
+
+  const data = await response.json()
+
+  if (data.error) {
+    console.error('[auth] Token exchange failed:', data.error, data.error_description)
+    return false
+  }
+
+  _accessToken = data.access_token
+  const expiresAt = Date.now() + (parseInt(data.expires_in || '3600') * 1000)
+  sessionStorage.setItem('access_token', _accessToken)
+  sessionStorage.setItem('token_expires_at', String(expiresAt))
+
+  // Store refresh token if provided (Desktop clients can return one)
+  if (data.refresh_token) {
+    sessionStorage.setItem('refresh_token', data.refresh_token)
+  }
+
+  console.log('[auth] Token obtained via PKCE')
+  return true
+}
+
+/**
+ * Try to restore a valid token from sessionStorage.
+ * Returns true if a non-expired token was found.
+ */
+export function restoreSession() {
+  const token = sessionStorage.getItem('access_token')
+  const expiresAt = parseInt(sessionStorage.getItem('token_expires_at') || '0')
+  if (token && Date.now() < expiresAt - 60_000) {
+    _accessToken = token
+    console.log('[auth] Session restored from storage')
+    return true
+  }
+  sessionStorage.removeItem('access_token')
+  sessionStorage.removeItem('token_expires_at')
+  return false
+}
+
+/**
+ * Redirect to Google sign-in using PKCE authorization code flow.
+ * Page navigates away — nothing after this call runs.
+ */
+export async function triggerSignIn() {
+  const { verifier, challenge } = await generatePKCE()
+  const state = crypto.randomUUID()
+
+  sessionStorage.setItem('pkce_verifier', verifier)
+  sessionStorage.setItem('oauth_state', state)
+
+  const params = new URLSearchParams({
+    client_id: CLIENT_ID,
+    redirect_uri: REDIRECT_URI,
+    response_type: 'code',
+    scope: SCOPES,
+    code_challenge: challenge,
+    code_challenge_method: 'S256',
+    state,
+    access_type: 'offline',   // request refresh token
+    prompt: 'select_account',
+  })
+
+  console.log('[auth] Redirecting to Google (PKCE)...')
+  window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params}`
+}
+
+/**
+ * Load gapi and initialise the Drive client with the current token.
  */
 export async function initGapi() {
   if (_gapiReady) return
+  await loadScript('https://apis.google.com/js/api.js')
   await waitForGlobal('gapi')
   await new Promise((resolve) => window.gapi.load('client', resolve))
   await window.gapi.client.init({ discoveryDocs: [DISCOVERY_DOC] })
+  window.gapi.client.setToken({ access_token: _accessToken })
   _gapiReady = true
+  console.log('[auth] gapi ready')
 }
 
 /**
- * Initialise the GSI token client.
- * Must be called once before requestToken().
- */
-export async function initGsi() {
-  await waitForGlobal('google')
-  _tokenClient = window.google.accounts.oauth2.initTokenClient({
-    client_id: CLIENT_ID,
-    scope: SCOPES,
-    callback: () => {}, // overridden per-request in requestToken()
-  })
-}
-
-/**
- * Request an access token interactively (shows Google consent popup).
- * Resolves with the token response object.
- */
-export function requestToken() {
-  return new Promise((resolve, reject) => {
-    if (!_tokenClient) {
-      return reject(new Error('GSI not initialised — call initGsi() first'))
-    }
-    _tokenClient.callback = (response) => {
-      if (response.error) return reject(new Error(response.error))
-      _accessToken = response.access_token
-      // Attach token to gapi so Drive calls are authenticated
-      window.gapi.client.setToken({ access_token: _accessToken })
-      resolve(response)
-    }
-    // prompt: '' reuses existing session silently; 'consent' forces the picker
-    _tokenClient.requestAccessToken({ prompt: _accessToken ? '' : 'consent' })
-  })
-}
-
-/**
- * Sign the user out and clear the stored token.
+ * Sign out — clear all tokens and state.
  */
 export function signOut() {
-  if (_accessToken) {
-    window.google.accounts.oauth2.revoke(_accessToken)
-    _accessToken = null
-  }
-  window.gapi.client.setToken(null)
+  _accessToken = null
+  _gapiReady = false
+  sessionStorage.removeItem('access_token')
+  sessionStorage.removeItem('token_expires_at')
+  sessionStorage.removeItem('refresh_token')
+  sessionStorage.removeItem('oauth_state')
+  sessionStorage.removeItem('pkce_verifier')
+  if (window.gapi?.client) window.gapi.client.setToken(null)
+  console.log('[auth] Signed out')
 }
 
-/** Returns true if we currently have an access token. */
+/** Returns true if we currently have a valid access token. */
 export function isSignedIn() {
   return !!_accessToken
 }

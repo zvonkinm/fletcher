@@ -5,21 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Fletcher</title>
     <link rel="icon" type="image/svg+xml" href="/fletcher/favicon.svg" />
-
+ 
     <!--
       COOP/COEP are set via vite.config.js in dev and via the GitHub Actions
       deploy workflow + service worker in production. SharedArrayBuffer (needed
       by SQLite WASM) requires both headers to be present.
     -->
-
+ 
     <!-- Google Identity Services -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
-
-    <!-- Google API client (Drive) -->
-    <script src="https://apis.google.com/js/api.js" async defer></script>
+ 
+    <!-- gapi is loaded dynamically after sign-in (see src/auth/google.js) -->
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
+ 
