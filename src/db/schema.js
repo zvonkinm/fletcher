@@ -61,6 +61,13 @@ export async function applySchema(db) {
     await db.run('ALTER TABLE gigs ADD COLUMN time TEXT')
     console.log('[db/schema] Migration: added gigs.time')
   }
+  if (!gigColNames.has('locked')) {
+    await db.run('ALTER TABLE gigs ADD COLUMN locked INTEGER NOT NULL DEFAULT 0')
+    // All pre-migration gigs are historic — lock them immediately.
+    // New gigs created via GigForm will INSERT with locked=0 (unlocked).
+    await db.run('UPDATE gigs SET locked = 1')
+    console.log('[db/schema] Migration: added gigs.locked, locked existing gigs')
+  }
 
   console.log('[db/schema] Schema applied')
 }

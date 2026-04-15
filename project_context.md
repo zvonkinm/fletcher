@@ -25,7 +25,7 @@ It replaces a Google Colab Python notebook (`VT_Book_Manager.ipynb`) and a manua
 | Auth backend | Cloudflare Worker | Handles token exchange with client secret server-side |
 | Drive API | `gapi` JS client (Drive API v3) | Loaded dynamically after auth |
 | PDF merge | `pdf-lib` | Phase 1, not yet implemented |
-| Drag-and-drop | `dnd-kit` | Phase 1, not yet implemented |
+| Drag-and-drop | `dnd-kit` | Implemented in Step 3 (Setlist Builder) |
 | Deploy | GitHub Pages | Auto-deploys via GitHub Actions on push to `main` |
 | Styling | CSS Modules (`.module.css` per component) | Converted from inline styles in Step 2 |
 
@@ -92,7 +92,8 @@ fletcher/
 │   └── views/
 │       ├── Repertoire.jsx      # Song library view (search, filter, sync, detail panel)
 │       ├── Repertoire.module.css
-│       ├── Setlist.jsx         # STUB — Step 3
+│       ├── Setlist.jsx         # Setlist builder: gig list, editor, multi-set Kanban
+│       ├── Setlist.module.css
 │       └── Settings.jsx        # STUB — Step 5
 ├── index.html
 ├── package.json
@@ -125,11 +126,14 @@ fletcher/
 |---|---|---|
 | id | TEXT PK | Slug e.g. `"vtjb_highball_042026"` |
 | name | TEXT | Human-readable name |
-| date | TEXT | ISO 8601 |
+| date | TEXT NULL | ISO 8601 |
 | venue | TEXT NULL | |
 | notes | TEXT NULL | |
-| setlist | TEXT | JSON array of song IDs e.g. `["1025","1014","1023#Am"]` |
-| print_sublists | TEXT | JSON array of `{name, song_ids[]}` |
+| band_name | TEXT NULL | e.g. "VTJB", "VTQ" |
+| time | TEXT NULL | e.g. "19:30" |
+| locked | INTEGER | 0=editable, 1=read-only; seed gigs and pre-migration gigs start locked |
+| setlist | TEXT | JSON: string[] (legacy flat) or `{id, name, song_ids[]}[]` (multi-set) |
+| print_sublists | TEXT | JSON array of `{name, song_ids[]}` — reserved for V2 |
 
 ### settings table
 Key/value store. Seeded keys:
@@ -271,14 +275,18 @@ For each song × instrument seat, find the best PDF:
   - Expandable warnings panel after sync
   - Key variants shown as `Bb`, `Am` etc. (no `#` prefix)
 
-### 🔲 Step 3 — Setlist Builder (NEXT)
-- Two-panel layout: Repertoire (left) + Setlist (right)
-- Drag songs from Repertoire into Setlist (`dnd-kit`)
-- Drag to reorder within Setlist
-- Per-entry key override (inline text field)
-- Print sublists (named subsets)
-- Gig CRUD (name, date, venue, notes)
-- Gig list view sorted by date
+### ✅ Step 3 — Setlist Builder (COMPLETE)
+- Gig list view sorted by date; create new gig via modal form
+- "Copy sets from" dropdown in new-gig form to pre-populate from an existing gig
+- Two-panel editor: Repertoire panel (left) + N set columns (right, horizontally scrollable)
+- Drag songs from Repertoire panel into any set column (`dnd-kit`)
+- Drag to reorder entries within a set; drag entries across sets
+- No duplicate songs within a gig (used songs dimmed in left panel)
+- Gig properties: name, band name, venue, date, time (auto-save with debounce)
+- N sets per gig — add / rename / delete sets
+- Lock/unlock toggle: historic/seed gigs load locked; new gigs start unlocked
+- Print sublists deferred to V2
+- Backward compat: flat `string[]` setlist format parsed as single "Set 1"
 
 ### 🔲 Step 4 — PDF Generation
 - Part resolution engine
@@ -299,6 +307,24 @@ For each song × instrument seat, find the best PDF:
 - Payments (per-gig pay, running totals)
 - Google Sheets write-back
 - Band profile (name, logo) — replaces hardcoded "Vintage Ties" references
+
+---
+
+## Future Tasks (logged)
+
+### Key tracking in Drive folders
+**Goal:** Update Drive folder naming to include the key for EVERY song (not just key variants).
+E.g. `1014 There ain_t no sweet man [C]` — the `[C]` suffix indicates the song's key.
+
+**Why:** Once all songs have keys in Drive, the sync engine can store `key` in the songs table.
+The Setlist Builder can then warn if two consecutive songs in a set are in the same key — helping
+the bandleader avoid monotonous key sequences.
+
+**Implementation sketch:**
+1. Update Drive folder naming convention to append `[<Key>]`
+2. Update `sync.js` parser to extract the key from folder name
+3. Add `key TEXT NULL` column to `songs` table (schema migration)
+4. In Setlist Builder / `GigEditor`, compute consecutive-key pairs per set and show a warning badge
 
 ---
 

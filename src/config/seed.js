@@ -168,11 +168,12 @@ export async function seedIfEmpty(db) {
       )
     }
 
-    // Historical gigs
+    // Historical gigs — seeded as locked=1 so they are read-only by default.
+    // The user must explicitly unlock a gig to edit it.
     for (const gig of SEED_GIGS) {
       await tx.run(
-        `INSERT OR IGNORE INTO gigs (id, name, date, setlist, print_sublists)
-         VALUES (?, ?, ?, ?, ?)`,
+        `INSERT OR IGNORE INTO gigs (id, name, date, setlist, print_sublists, locked)
+         VALUES (?, ?, ?, ?, ?, 1)`,
         [
           gig.id,
           gig.name,

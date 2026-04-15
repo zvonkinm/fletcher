@@ -147,7 +147,7 @@ function GigList() {
   const loadGigs = useCallback(async () => {
     try {
       const rows = await db.exec(
-        'SELECT id, name, band_name, date, time, venue, setlist ' +
+        'SELECT id, name, band_name, date, time, venue, setlist, locked ' +
         'FROM gigs ORDER BY date DESC, name ASC'
       )
       setGigs(rows)
@@ -220,6 +220,9 @@ function GigList() {
                   <span className={styles.gigName}>{gig.name}</span>
                   {gig.band_name && (
                     <span className={styles.gigBand}>{gig.band_name}</span>
+                  )}
+                  {gig.locked === 1 && (
+                    <span className={styles.lockBadge} title="Locked">🔒</span>
                   )}
                 </div>
                 <div className={styles.gigCardMeta}>
@@ -414,11 +417,12 @@ function GigForm({ existingGigs, onSave, onCancel }) {
 //   - drag is disabled
 //   - a ✓ badge replaces the "+" button
 //   - row is visually dimmed
-function DraggableSong({ song, isUsed, onAdd }) {
+function DraggableSong({ song, isUsed, isLocked, onAdd }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id:       'repo::' + song.id,
     data:     { type: 'song', song },
-    disabled: isUsed,  // dnd-kit won't activate drag for already-used songs
+    // Disable drag when the song is already in the gig, or when the gig is locked
+    disabled: isUsed || isLocked,
   })
 
   return (
@@ -429,7 +433,6 @@ function DraggableSong({ song, isUsed, onAdd }) {
         isDragging ? styles.repoRowDragging : '',
         isUsed     ? styles.repoRowUsed    : '',
       ].filter(Boolean).join(' ')}
-      // listeners/attributes attach the pointer event handlers for drag
       {...listeners}
       {...attributes}
     >
@@ -438,20 +441,19 @@ function DraggableSong({ song, isUsed, onAdd }) {
         <span className={styles.keyBadge}>{song.key_variant}</span>
       )}
       <span className={styles.repoTitle}>{song.title}</span>
+      {/* Show ✓ when already used; show + when available and unlocked; show nothing when locked */}
       {isUsed ? (
         <span className={styles.usedMark} title="Already in this gig">✓</span>
-      ) : (
-        // "+" button adds to the first set — alternative to drag
+      ) : !isLocked ? (
         <button
           className={styles.addBtn}
           title="Add to Set 1"
-          // Stop the drag listener from activating on a click
           onPointerDown={e => e.stopPropagation()}
           onClick={e => { e.stopPropagation(); onAdd(song.id) }}
         >
           +
         </button>
-      )}
+      ) : null}
     </div>
   )
 }
@@ -463,14 +465,16 @@ function DraggableSong({ song, isUsed, onAdd }) {
 //   entry    — { entryId, songId }
 //   song     — song object from DB, or null if not yet synced from Drive
 //   position — 1-based position number displayed to the left of the badge
+//   isLocked — when true, drag is disabled and the remove button is hidden
 //   onRemove(entryId) — called when the × button is clicked
-function SetEntry({ entry, song, position, onRemove }) {
+function SetEntry({ entry, song, position, isLocked, onRemove }) {
   const {
     attributes, listeners, setNodeRef,
     transform, transition, isDragging,
   } = useSortable({
-    id:   entry.entryId,
-    data: { type: 'entry', entryId: entry.entryId },
+    id:       entry.entryId,
+    data:     { type: 'entry', entryId: entry.entryId },
+    disabled: isLocked,  // dnd-kit won't activate drag when the gig is locked
   })
 
   // CSS.Transform.toString() converts dnd-kit's transform object to a CSS
@@ -487,15 +491,17 @@ function SetEntry({ entry, song, position, onRemove }) {
       style={style}
       className={`${styles.setEntry} ${isDragging ? styles.setEntryDragging : ''}`}
     >
-      {/* Drag handle — only this element activates drag; rest of row is clickable */}
-      <span
-        className={styles.dragHandle}
-        {...listeners}
-        {...attributes}
-        title="Drag to reorder or move to another set"
-      >
-        ⠿
-      </span>
+      {/* Drag handle — hidden when locked so the row looks purely read-only */}
+      {!isLocked && (
+        <span
+          className={styles.dragHandle}
+          {...listeners}
+          {...attributes}
+          title="Drag to reorder or move to another set"
+        >
+          ⠿
+        </span>
+      )}
 
       <span className={styles.entryPos}>{position}</span>
 
@@ -512,14 +518,17 @@ function SetEntry({ entry, song, position, onRemove }) {
         <span className={styles.entryUnknown}>{entry.songId}</span>
       )}
 
-      <button
-        className={styles.removeBtn}
-        onClick={() => onRemove(entry.entryId)}
-        onPointerDown={e => e.stopPropagation()}
-        title="Remove from set"
-      >
-        ×
-      </button>
+      {/* Remove button — hidden when the gig is locked */}
+      {!isLocked && (
+        <button
+          className={styles.removeBtn}
+          onClick={() => onRemove(entry.entryId)}
+          onPointerDown={e => e.stopPropagation()}
+          title="Remove from set"
+        >
+          ×
+        </button>
+      )}
     </div>
   )
 }
@@ -535,7 +544,9 @@ function SetEntry({ entry, song, position, onRemove }) {
 //   onRename(setId, name)
 //   onRemoveEntry(setId, entryId)
 //   onDelete(setId)
-function SetColumn({ set, songMap, isSongDragging, onRename, onRemoveEntry, onDelete }) {
+function SetColumn({ set, songMap, isSongDragging, isLocked, onRename, onRemoveEntry, onDelete }) {
+  // When locked, dropping is still registered by useDroppable but handleDragEnd
+  // in GigEditor checks isLocked before mutating state, so drops are no-ops.
   const { setNodeRef, isOver } = useDroppable({ id: 'set-col-' + set.id })
 
   // Local state for the inline rename input
@@ -560,6 +571,7 @@ function SetColumn({ set, songMap, isSongDragging, onRename, onRemoveEntry, onDe
 
       {/* ── Column header: name, count, delete ──────────────────────── */}
       <div className={styles.setColumnHeader}>
+        {/* Set name: click-to-rename when unlocked, plain text when locked */}
         {editing ? (
           <input
             className={styles.setNameInput}
@@ -575,21 +587,25 @@ function SetColumn({ set, songMap, isSongDragging, onRename, onRemoveEntry, onDe
         ) : (
           <span
             className={styles.setName}
-            onClick={() => setEditing(true)}
-            title="Click to rename"
+            onClick={isLocked ? undefined : () => setEditing(true)}
+            title={isLocked ? undefined : 'Click to rename'}
+            style={isLocked ? { cursor: 'default' } : undefined}
           >
             {set.name}
           </span>
         )}
         <span className={styles.setCount}>{set.entries.length}</span>
-        <button
-          className={styles.removeBtn}
-          onClick={() => onDelete(set.id)}
-          onPointerDown={e => e.stopPropagation()}
-          title="Delete this set"
-        >
-          ×
-        </button>
+        {/* Delete button hidden when locked */}
+        {!isLocked && (
+          <button
+            className={styles.removeBtn}
+            onClick={() => onDelete(set.id)}
+            onPointerDown={e => e.stopPropagation()}
+            title="Delete this set"
+          >
+            ×
+          </button>
+        )}
       </div>
 
       {/* ── Droppable body + sortable entries ───────────────────────── */}
@@ -618,6 +634,7 @@ function SetColumn({ set, songMap, isSongDragging, onRename, onRemoveEntry, onDe
               entry={entry}
               song={songMap.get(entry.songId) ?? null}
               position={i + 1}
+              isLocked={isLocked}
               onRemove={entryId => onRemoveEntry(set.id, entryId)}
             />
           ))}
@@ -647,6 +664,8 @@ function GigEditor({ gigId }) {
   const [saveStatus, setSaveStatus] = useState('saved')  // 'saved'|'saving'|'error'
   const [activeDrag, setActiveDrag] = useState(null)     // for DragOverlay
   const [showDelete, setShowDelete] = useState(false)
+  // isLocked: true = read-only; toggled by the lock button; saved immediately
+  const [isLocked, setIsLocked]     = useState(true)     // default locked until loaded
 
   // loadedRef prevents auto-save effects from firing during the initial load
   const loadedRef   = useRef(false)
@@ -670,6 +689,8 @@ function GigEditor({ gigId }) {
           time:      row.time      ?? '',
           venue:     row.venue     ?? '',
         })
+        // locked is stored as INTEGER 0/1; treat any non-zero value as locked
+        setIsLocked(row.locked !== 0)
         setSets(parseStoredSets(JSON.parse(row.setlist || '[]')))
 
         // Load the full repertoire for the left panel
@@ -743,6 +764,19 @@ function GigEditor({ gigId }) {
     [sets]
   )
 
+  // ── Lock toggle ───────────────────────────────────────────────────────
+  // Saves immediately (no debounce) — a single boolean write.
+  async function toggleLock() {
+    const next = !isLocked
+    setIsLocked(next)
+    try {
+      await db.run('UPDATE gigs SET locked = ? WHERE id = ?', [next ? 1 : 0, gigId])
+    } catch (err) {
+      console.error('[Setlist] Lock save failed:', err)
+      setIsLocked(isLocked)  // revert on error
+    }
+  }
+
   // ── DnD sensors ──────────────────────────────────────────────────────
   // activationConstraint.distance: require 8px of pointer movement before
   // drag activates. Prevents accidental drags when clicking buttons in rows.
@@ -763,6 +797,8 @@ function GigEditor({ gigId }) {
   function handleDragEnd({ active, over }) {
     setActiveDrag(null)
     if (!over) return
+    // Safety guard: locked gigs must not be mutated even if drag somehow fires
+    if (isLocked) return
 
     const type = active.data.current?.type
 
@@ -954,7 +990,16 @@ function GigEditor({ gigId }) {
             value={meta.name}
             onChange={e => setMeta(m => ({ ...m, name: e.target.value }))}
             placeholder="Gig name"
+            readOnly={isLocked}
           />
+          {/* Lock toggle — prominent when locked, subtle when unlocked */}
+          <button
+            className={`${styles.lockBtn} ${isLocked ? styles.lockBtnLocked : ''}`}
+            onClick={toggleLock}
+            title={isLocked ? 'Locked — click to unlock and edit' : 'Unlocked — click to lock'}
+          >
+            {isLocked ? '🔒 Locked' : '🔓 Unlocked'}
+          </button>
           <span className={`${styles.saveStatus} ${saveStatus === 'saving' ? styles.saveStatusSaving : saveStatus === 'error' ? styles.saveStatusError : ''}`}>
             {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'error' ? 'Save error' : 'Saved'}
           </span>
@@ -968,24 +1013,28 @@ function GigEditor({ gigId }) {
             value={meta.band_name}
             onChange={e => setMeta(m => ({ ...m, band_name: e.target.value }))}
             placeholder="Band name"
+            readOnly={isLocked}
           />
           <input
             className={styles.metaInput}
             type="date"
             value={meta.date}
             onChange={e => setMeta(m => ({ ...m, date: e.target.value }))}
+            readOnly={isLocked}
           />
           <input
             className={styles.metaInput}
             value={meta.time}
             onChange={e => setMeta(m => ({ ...m, time: e.target.value }))}
             placeholder="Time"
+            readOnly={isLocked}
           />
           <input
             className={styles.metaInput}
             value={meta.venue}
             onChange={e => setMeta(m => ({ ...m, venue: e.target.value }))}
             placeholder="Venue"
+            readOnly={isLocked}
           />
         </div>
       </div>
@@ -1045,6 +1094,7 @@ function GigEditor({ gigId }) {
                   key={song.id}
                   song={song}
                   isUsed={allUsedSongIds.has(song.id)}
+                  isLocked={isLocked}
                   onAdd={addSongToFirstSet}
                 />
               ))}
@@ -1059,14 +1109,18 @@ function GigEditor({ gigId }) {
                 set={set}
                 songMap={songMap}
                 isSongDragging={activeDrag?.type === 'song'}
+                isLocked={isLocked}
                 onRename={renameSet}
                 onRemoveEntry={removeEntryFromSet}
                 onDelete={deleteSet}
               />
             ))}
-            <button className={styles.addSetBtn} onClick={addSet}>
-              + Add Set
-            </button>
+            {/* Add Set button hidden when locked */}
+            {!isLocked && (
+              <button className={styles.addSetBtn} onClick={addSet}>
+                + Add Set
+              </button>
+            )}
           </div>
         </div>
 

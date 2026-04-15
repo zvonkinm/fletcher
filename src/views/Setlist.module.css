@@ -1,4 +1,4 @@
-/* src/views/Setlist.module.css */
+0/* src/views/Setlist.module.css */
 /* Styles for both the GigList screen and the GigEditor screen. */
 
 /* ── Shared tokens (match App + Repertoire palette) ──────────────────────── */
@@ -370,6 +370,54 @@ select.formInput {
 .deleteBtn:hover {
   color: #C0392B;
   background: #fff5f5;
+}
+
+/* ── Lock button + badge ─────────────────────────────────────────────────── */
+
+.lockBtn {
+  background: none;
+  border: 1px solid #D0D9E8;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: Arial, sans-serif;
+  color: #4A5568;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.lockBtn:hover {
+  border-color: #1B2B4B;
+  color: #1B2B4B;
+}
+
+/* Locked state — gold tint */
+.lockBtnLocked {
+  border-color: #C9A84C;
+  color: #b7791f;
+  background: #fffbf0;
+}
+
+.lockBtnLocked:hover {
+  background: #fff3d0;
+  border-color: #b7791f;
+}
+
+.lockBadge {
+  font-size: 12px;
+  margin-left: 4px;
+  opacity: 0.7;
+}
+
+/* Read-only meta inputs: subtle grey background, no pointer */
+.metaInput[readOnly],
+.gigNameInput[readOnly] {
+  background: #F7F9FC;
+  color: #4A5568;
+  cursor: default;
 }
 
 /* ── Editor body: left panel + sets area ─────────────────────────────────── */
