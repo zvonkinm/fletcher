@@ -46,5 +46,21 @@ export async function applySchema(db) {
   await db.run(`CREATE INDEX IF NOT EXISTS idx_songs_type ON songs(song_type, subtype)`)
   await db.run(`CREATE INDEX IF NOT EXISTS idx_gigs_date ON gigs(date DESC)`)
 
+  // ── Schema migrations ───────────────────────────────────────────────────
+  // SQLite does not support ALTER TABLE … ADD COLUMN IF NOT EXISTS, so we
+  // inspect PRAGMA table_info first and only add columns that are missing.
+  // This block runs on every startup and is safe to re-run on existing DBs.
+  const gigCols = await db.exec('PRAGMA table_info(gigs)')
+  const gigColNames = new Set(gigCols.map(c => c.name))
+
+  if (!gigColNames.has('band_name')) {
+    await db.run('ALTER TABLE gigs ADD COLUMN band_name TEXT')
+    console.log('[db/schema] Migration: added gigs.band_name')
+  }
+  if (!gigColNames.has('time')) {
+    await db.run('ALTER TABLE gigs ADD COLUMN time TEXT')
+    console.log('[db/schema] Migration: added gigs.time')
+  }
+
   console.log('[db/schema] Schema applied')
 }

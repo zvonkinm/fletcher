@@ -8,16 +8,23 @@ import NavBar from './components/NavBar.jsx'
 import Repertoire from './views/Repertoire.jsx'
 import Setlist from './views/Setlist.jsx'
 import Settings from './views/Settings.jsx'
+import styles from './App.module.css'
 
-// Initialise GSI once at module level
+// Initialise GSI once at module level — outside the React component so that
+// React StrictMode's double-invocation doesn't create two token clients.
 const gsiReady = initGsi()
 
 export default function App() {
-  const [authState, setAuthState] = useState('loading') // loading | idle | signed-in | error
-  const [dbReady, setDbReady] = useState(false)
-  const [error, setError] = useState(null)
+  // authState drives which screen is shown:
+  //   'loading'   — checking for an existing session (shown on every page load)
+  //   'idle'      — no session found, show sign-in screen
+  //   'signed-in' — token available, show main app
+  //   'error'     — unrecoverable error, show error card
+  const [authState, setAuthState] = useState('loading')
+  const [dbReady, setDbReady]     = useState(false)
+  const [error, setError]         = useState(null)
 
-  // ── Initialise DB ──────────────────────────────────────────────────────────
+  // ── Initialise SQLite DB ───────────────────────────────────────────────
   useEffect(() => {
     db.ready
       .then(() => setDbReady(true))
@@ -27,41 +34,41 @@ export default function App() {
       })
   }, [])
 
-  // ── Auth init — handle redirect callback or restore session ───────────────
+  // ── Auth init — handle redirect or restore session ─────────────────────
   useEffect(() => {
     async function initAuth() {
-      await gsiReady
+      await gsiReady  // wait for GSI script to load
 
-      // 1. Check if we're returning from a Google redirect (async — exchanges code via PKCE)
+      // Case 1: returning from Google's sign-in redirect (?code=... in URL)
       const fromRedirect = await handleRedirectCallback()
       if (fromRedirect) {
-        await initGapi()
+        await initGapi()          // load Drive API client now that we have a token
         setAuthState('signed-in')
         return
       }
 
-      // 2. Try to restore an existing session from storage
+      // Case 2: valid token already in sessionStorage from this browser session
       if (restoreSession()) {
         await initGapi()
         setAuthState('signed-in')
         return
       }
 
-      // 3. No session — show sign-in screen
+      // Case 3: no token — show the sign-in screen
       setAuthState('idle')
     }
 
     initAuth().catch((err) => {
       console.error('[App] Auth init failed:', err)
-      setAuthState('idle') // degrade gracefully to sign-in screen
+      setAuthState('idle') // degrade gracefully to sign-in rather than hard error
     })
   }, [])
 
-  // ── Sign in — triggers full-page redirect to Google ───────────────────────
+  // ── Sign-in handler ────────────────────────────────────────────────────
   async function handleSignIn() {
     try {
-      // triggerSignIn generates PKCE asynchronously then navigates away.
-      // Nothing after this runs — the page redirects to Google.
+      // triggerSignIn() generates a PKCE challenge then redirects the page
+      // to Google. Nothing after this call runs — the browser navigates away.
       await triggerSignIn()
     } catch (err) {
       console.error('[App] Sign-in redirect failed:', err)
@@ -69,19 +76,20 @@ export default function App() {
     }
   }
 
+  // ── Sign-out handler ───────────────────────────────────────────────────
   function handleSignOut() {
-    signOut()
-    setAuthState('idle')
+    signOut()             // clears token from memory and sessionStorage
+    setAuthState('idle')  // return to sign-in screen
   }
 
-  // ── Error state ────────────────────────────────────────────────────────────
+  // ── Error screen ───────────────────────────────────────────────────────
   if (error) {
     return (
-      <div style={styles.center}>
-        <div style={styles.errorCard}>
-          <h2 style={{ color: '#C0392B', marginTop: 0 }}>Something went wrong</h2>
-          <p style={{ fontFamily: 'monospace', fontSize: 13 }}>{error}</p>
-          <button style={styles.btn} onClick={() => window.location.reload()}>
+      <div className={styles.center}>
+        <div className={styles.errorCard}>
+          <h2 className={styles.errorHeading}>Something went wrong</h2>
+          <p className={styles.errorMessage}>{error}</p>
+          <button className={styles.btn} onClick={() => window.location.reload()}>
             Reload
           </button>
         </div>
@@ -89,25 +97,25 @@ export default function App() {
     )
   }
 
-  // ── Loading / auth-checking state ──────────────────────────────────────────
+  // ── Loading screen (DB init or auth check in progress) ────────────────
   if (authState === 'loading' || !dbReady) {
     return (
-      <div style={styles.center}>
-        <p style={{ color: '#4A5568', fontFamily: 'Arial, sans-serif' }}>
+      <div className={styles.center}>
+        <p className={styles.loadingText}>
           {!dbReady ? 'Initialising database…' : 'Checking session…'}
         </p>
       </div>
     )
   }
 
-  // ── Sign-in screen ─────────────────────────────────────────────────────────
+  // ── Sign-in screen ─────────────────────────────────────────────────────
   if (authState !== 'signed-in') {
     return (
-      <div style={styles.center}>
-        <div style={styles.loginCard}>
-          <h1 style={styles.logo}>Fletcher</h1>
-          <p style={styles.subtitle}>Band Manager</p>
-          <button style={styles.btn} onClick={handleSignIn}>
+      <div className={styles.center}>
+        <div className={styles.loginCard}>
+          <h1 className={styles.logo}>Fletcher</h1>
+          <p className={styles.subtitle}>Band Manager</p>
+          <button className={styles.btn} onClick={handleSignIn}>
             Sign in with Google
           </button>
         </div>
@@ -115,12 +123,13 @@ export default function App() {
     )
   }
 
-  // ── Main app ───────────────────────────────────────────────────────────────
+  // ── Main app shell ─────────────────────────────────────────────────────
   return (
-    <div style={styles.app}>
+    <div className={styles.app}>
       <NavBar onSignOut={handleSignOut} />
-      <main style={styles.main}>
+      <main className={styles.main}>
         <Routes>
+          {/* Default route redirects to Repertoire */}
           <Route path="/" element={<Navigate to="/repertoire" replace />} />
           <Route path="/repertoire" element={<Repertoire />} />
           <Route path="/setlist/:gigId?" element={<Setlist />} />
@@ -129,69 +138,4 @@ export default function App() {
       </main>
     </div>
   )
-}
-
-// ── Styles ─────────────────────────────────────────────────────────────────
-const styles = {
-  app: {
-    display: 'flex',
-    flexDirection: 'column',
-    height: '100vh',
-    fontFamily: 'Arial, sans-serif',
-    background: '#F7F9FC',
-  },
-  main: {
-    flex: 1,
-    overflow: 'auto',
-    padding: '24px',
-  },
-  center: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: '100vh',
-    background: '#F7F9FC',
-    fontFamily: 'Arial, sans-serif',
-  },
-  loginCard: {
-    background: '#fff',
-    borderRadius: 12,
-    padding: '48px 56px',
-    boxShadow: '0 4px 24px rgba(27,43,75,0.12)',
-    textAlign: 'center',
-    minWidth: 320,
-  },
-  errorCard: {
-    background: '#fff',
-    borderRadius: 12,
-    padding: '32px 40px',
-    boxShadow: '0 4px 24px rgba(192,57,43,0.12)',
-    maxWidth: 480,
-  },
-  logo: {
-    fontSize: 40,
-    fontWeight: 700,
-    color: '#1B2B4B',
-    margin: '0 0 8px',
-    letterSpacing: '-1px',
-  },
-  subtitle: {
-    color: '#C9A84C',
-    fontWeight: 600,
-    marginBottom: 32,
-    fontSize: 14,
-    textTransform: 'uppercase',
-    letterSpacing: '0.08em',
-  },
-  btn: {
-    background: '#1B2B4B',
-    color: '#fff',
-    border: 'none',
-    borderRadius: 8,
-    padding: '12px 28px',
-    fontSize: 15,
-    fontWeight: 600,
-    cursor: 'pointer',
-    fontFamily: 'Arial, sans-serif',
-  },
 }

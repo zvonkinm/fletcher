@@ -1,0 +1,787 @@
+/* src/views/Setlist.module.css */
+/* Styles for both the GigList screen and the GigEditor screen. */
+
+/* ── Shared tokens (match App + Repertoire palette) ──────────────────────── */
+/* Navy: #1B2B4B  |  Border: #D0D9E8  |  Bg: #F7F9FC  |  Gold: #C9A84C     */
+/* Muted text: #A0AEC0  |  Body text: #4A5568  |  Surface: #fff             */
+
+/* ── GigList layout ───────────────────────────────────────────────────────── */
+
+.listContainer {
+  max-width: 840px;
+  margin: 0 auto;
+}
+
+.listHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.heading {
+  color: #1B2B4B;
+  margin: 0;
+  font-size: 22px;
+}
+
+.muted {
+  color: #A0AEC0;
+  font-size: 13px;
+  margin: 8px 0;
+  font-family: Arial, sans-serif;
+}
+
+/* ── Gig cards grid ───────────────────────────────────────────────────────── */
+
+.gigCards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gigCard {
+  background: #fff;
+  border: 1px solid #D0D9E8;
+  border-radius: 10px;
+  padding: 14px 20px;
+  cursor: pointer;
+  font-family: Arial, sans-serif;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gigCard:hover {
+  border-color: #1B2B4B;
+  box-shadow: 0 2px 10px rgba(27, 43, 75, 0.09);
+}
+
+.gigCardTop {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.gigName {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1B2B4B;
+}
+
+.gigBand {
+  font-size: 13px;
+  color: #4A5568;
+}
+
+.gigCardMeta {
+  display: flex;
+  gap: 6px;
+  font-size: 13px;
+  color: #4A5568;
+}
+
+.gigCardStats {
+  font-size: 12px;
+  color: #A0AEC0;
+}
+
+/* ── Shared buttons ───────────────────────────────────────────────────────── */
+
+.primaryBtn {
+  background: #1B2B4B;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: Arial, sans-serif;
+  transition: background 0.15s;
+}
+
+.primaryBtn:hover:not(:disabled) {
+  background: #2a3f6b;
+}
+
+.primaryBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ghostBtn {
+  background: none;
+  color: #4A5568;
+  border: 1px solid #D0D9E8;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: Arial, sans-serif;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.ghostBtn:hover {
+  border-color: #1B2B4B;
+  color: #1B2B4B;
+}
+
+.dangerBtn {
+  background: #C0392B;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: Arial, sans-serif;
+  transition: background 0.15s;
+}
+
+.dangerBtn:hover {
+  background: #a93226;
+}
+
+/* ── Modal overlay + card ─────────────────────────────────────────────────── */
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(27, 43, 75, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+.modalPanel {
+  background: #fff;
+  border-radius: 12px;
+  padding: 28px 32px;
+  min-width: 380px;
+  max-width: 480px;
+  width: 90%;
+  box-shadow: 0 8px 40px rgba(27, 43, 75, 0.2);
+  font-family: Arial, sans-serif;
+}
+
+.modalTitle {
+  margin: 0 0 20px;
+  font-size: 17px;
+  color: #1B2B4B;
+}
+
+/* ── GigForm fields ───────────────────────────────────────────────────────── */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.formRow {
+  display: flex;
+  gap: 12px;
+}
+
+.formLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1B2B4B;
+  font-family: Arial, sans-serif;
+}
+
+.formInput {
+  padding: 8px 12px;
+  border: 1px solid #D0D9E8;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: Arial, sans-serif;
+  color: #1B2B4B;
+  background: #fff;
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.formInput:focus {
+  border-color: #1B2B4B;
+}
+
+/* select inherits .formInput but needs explicit appearance reset */
+select.formInput {
+  appearance: auto;
+  cursor: pointer;
+}
+
+.formError {
+  color: #C0392B;
+  font-size: 13px;
+  margin: 0;
+  font-family: Arial, sans-serif;
+}
+
+.formActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+/* ── GigEditor layout ─────────────────────────────────────────────────────── */
+
+/* Full-height column layout.
+   56px = NavBar, 48px = main padding (24px top + 24px bottom). */
+.editorWrap {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 56px - 48px);
+  font-family: Arial, sans-serif;
+}
+
+/* Two-row header containing all editable gig properties */
+.editorHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #D0D9E8;
+  margin-bottom: 12px;
+  flex-shrink: 0;
+}
+
+.headerRow1 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.headerRow2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 2px;
+}
+
+.backBtn {
+  background: none;
+  border: none;
+  color: #4A5568;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 0;
+  white-space: nowrap;
+  font-family: Arial, sans-serif;
+  flex-shrink: 0;
+}
+
+.backBtn:hover {
+  color: #1B2B4B;
+}
+
+/* Large editable gig name — borderless, looks like a heading */
+.gigNameInput {
+  flex: 1;
+  font-size: 18px;
+  font-weight: 700;
+  color: #1B2B4B;
+  border: none;
+  border-bottom: 2px solid transparent;
+  outline: none;
+  background: transparent;
+  font-family: Arial, sans-serif;
+  padding: 2px 4px;
+  min-width: 0;
+  transition: border-color 0.15s;
+}
+
+.gigNameInput:focus {
+  border-bottom-color: #C9A84C;
+}
+
+.gigNameInput::placeholder {
+  color: #A0AEC0;
+  font-weight: 400;
+}
+
+/* Compact metadata fields (band name, date, time, venue) */
+.metaInput {
+  padding: 5px 10px;
+  border: 1px solid #D0D9E8;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: Arial, sans-serif;
+  color: #4A5568;
+  background: #fff;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.metaInput:focus {
+  border-color: #1B2B4B;
+}
+
+.metaInput[type="date"] {
+  min-width: 130px;
+}
+
+.metaInput::placeholder {
+  color: #A0AEC0;
+}
+
+.saveStatus {
+  font-size: 12px;
+  color: #A0AEC0;
+  white-space: nowrap;
+  margin-left: auto;
+}
+
+.saveStatusSaving {
+  color: #C9A84C;
+}
+
+.saveStatusError {
+  color: #C0392B;
+}
+
+.deleteBtn {
+  background: none;
+  border: none;
+  color: #A0AEC0;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-family: Arial, sans-serif;
+  white-space: nowrap;
+  transition: color 0.15s, background 0.15s;
+  flex-shrink: 0;
+}
+
+.deleteBtn:hover {
+  color: #C0392B;
+  background: #fff5f5;
+}
+
+/* ── Editor body: left panel + sets area ─────────────────────────────────── */
+
+.editorBody {
+  display: flex;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;   /* critical: allows flex children to shrink below content height */
+  overflow: hidden;
+}
+
+/* ── Left panel (Repertoire) ─────────────────────────────────────────────── */
+
+.leftPanel {
+  width: 256px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 1px solid #D0D9E8;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.panelTitle {
+  padding: 10px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #4A5568;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-bottom: 1px solid #EFF2F7;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.panelCount {
+  background: #EFF2F7;
+  color: #4A5568;
+  border-radius: 10px;
+  padding: 1px 7px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.searchInput {
+  padding: 8px 12px;
+  border: none;
+  border-bottom: 1px solid #EFF2F7;
+  font-size: 13px;
+  font-family: Arial, sans-serif;
+  outline: none;
+  background: #F7F9FC;
+  color: #1B2B4B;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.searchInput:focus {
+  background: #fff;
+}
+
+.repoList {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+/* ── Repo song rows ───────────────────────────────────────────────────────── */
+
+.repoRow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  cursor: grab;
+  font-family: Arial, sans-serif;
+  transition: background 0.1s;
+  user-select: none;
+}
+
+.repoRow:hover {
+  background: #F7F9FC;
+}
+
+.repoRow:active {
+  cursor: grabbing;
+}
+
+/* Being dragged: the placeholder left behind */
+.repoRowDragging {
+  opacity: 0.4;
+}
+
+/* Song already in the gig: dimmed, cursor default, no hover highlight */
+.repoRowUsed {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.repoRowUsed:hover {
+  background: transparent;
+}
+
+.repoTitle {
+  flex: 1;
+  font-size: 13px;
+  color: #1B2B4B;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.usedMark {
+  font-size: 12px;
+  color: #1A6B3C;
+  font-weight: 700;
+  flex-shrink: 0;
+  width: 20px;
+  text-align: center;
+}
+
+.addBtn {
+  background: none;
+  border: 1px solid #D0D9E8;
+  border-radius: 4px;
+  width: 22px;
+  height: 22px;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  color: #4A5568;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.addBtn:hover {
+  background: #1B2B4B;
+  color: #fff;
+  border-color: #1B2B4B;
+}
+
+/* ── Sets area (horizontal scrolling row of columns) ─────────────────────── */
+
+.setsArea {
+  flex: 1;
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* align-items defaults to stretch so columns fill the full height */
+  padding-bottom: 4px;  /* room for horizontal scrollbar */
+  min-width: 0;
+}
+
+/* "Add Set" button — sits inline after the last column */
+.addSetBtn {
+  flex-shrink: 0;
+  align-self: flex-start;
+  margin-top: 2px;
+  background: none;
+  border: 2px dashed #D0D9E8;
+  border-radius: 10px;
+  padding: 10px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #A0AEC0;
+  cursor: pointer;
+  font-family: Arial, sans-serif;
+  white-space: nowrap;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.addSetBtn:hover {
+  border-color: #1B2B4B;
+  color: #1B2B4B;
+}
+
+/* ── Set column ──────────────────────────────────────────────────────────── */
+
+.setColumn {
+  width: 256px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 1px solid #D0D9E8;
+  border-radius: 10px;
+  overflow: hidden;
+  /* Height is set by the parent's align-items:stretch — no height: 100% needed */
+}
+
+.setColumnHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #EFF2F7;
+  flex-shrink: 0;
+  background: #F7F9FC;
+}
+
+.setName {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 700;
+  color: #1B2B4B;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: 4px;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  transition: background 0.12s;
+}
+
+.setName:hover {
+  background: #EFF2F7;
+}
+
+.setNameInput {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 700;
+  color: #1B2B4B;
+  border: 1px solid #1B2B4B;
+  border-radius: 4px;
+  padding: 2px 6px;
+  outline: none;
+  font-family: Arial, sans-serif;
+  min-width: 0;
+}
+
+.setCount {
+  background: #EFF2F7;
+  color: #4A5568;
+  border-radius: 10px;
+  padding: 1px 7px;
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+/* Scrollable body of a set column */
+.setColumnBody {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 4px;
+  transition: background 0.15s;
+}
+
+/* Highlight when a song from the repertoire is dragged over this column */
+.setColumnBodyOver {
+  background: #f0f9ff;
+  outline: 2px solid #C9A84C;
+  outline-offset: -2px;
+}
+
+.emptyHint {
+  color: #A0AEC0;
+  font-size: 12px;
+  text-align: center;
+  padding: 24px 12px;
+  font-family: Arial, sans-serif;
+  margin: 0;
+}
+
+/* ── Set entries ─────────────────────────────────────────────────────────── */
+
+.setEntry {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 8px;
+  border-radius: 6px;
+  margin-bottom: 3px;
+  background: #fff;
+  border: 1px solid #EFF2F7;
+  font-family: Arial, sans-serif;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+.setEntry:hover {
+  border-color: #D0D9E8;
+  box-shadow: 0 1px 4px rgba(27, 43, 75, 0.06);
+}
+
+/* The entry placeholder left behind while it's being dragged */
+.setEntryDragging {
+  opacity: 0.35;
+  box-shadow: none;
+}
+
+/* ⠿ grip icon */
+.dragHandle {
+  color: #C0CBD8;
+  cursor: grab;
+  font-size: 14px;
+  flex-shrink: 0;
+  user-select: none;
+  line-height: 1;
+}
+
+.dragHandle:hover {
+  color: #4A5568;
+}
+
+.entryPos {
+  font-size: 11px;
+  color: #A0AEC0;
+  min-width: 16px;
+  text-align: right;
+  flex-shrink: 0;
+  font-family: monospace;
+}
+
+.entryTitle {
+  flex: 1;
+  font-size: 13px;
+  color: #1B2B4B;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.entryUnknown {
+  flex: 1;
+  font-size: 12px;
+  color: #A0AEC0;
+  font-family: monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* × remove button — used in both set entries and column headers */
+.removeBtn {
+  background: none;
+  border: none;
+  color: #C0CBD8;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+  flex-shrink: 0;
+  transition: color 0.12s;
+}
+
+.removeBtn:hover {
+  color: #C0392B;
+}
+
+/* ── Index + key badges ───────────────────────────────────────────────────── */
+
+/* Coloured pill — background is set inline (data-driven) */
+.badge {
+  display: inline-block;
+  border-radius: 5px;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  min-width: 38px;
+  text-align: center;
+  font-family: monospace;
+  flex-shrink: 0;
+}
+
+/* Key variant label e.g. "Am", "Eb" */
+.keyBadge {
+  background: #EFF2F7;
+  color: #4A5568;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-weight: 600;
+  font-family: monospace;
+  flex-shrink: 0;
+}
+
+/* ── Drag overlay (floating preview under the cursor) ─────────────────────── */
+
+.dragOverlay {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #fff;
+  border: 1px solid #1B2B4B;
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(27, 43, 75, 0.18);
+  font-family: Arial, sans-serif;
+  pointer-events: none;
+  max-width: 240px;
+}
+
+.dragOverlayTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1B2B4B;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
