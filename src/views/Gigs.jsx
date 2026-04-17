@@ -1,9 +1,9 @@
-// src/views/Setlist.jsx
-// Step 3: Setlist Builder
+// src/views/Gigs.jsx
+// Step 3: Gig Builder
 //
 // Two screens, selected by URL parameter:
-//   /setlist          → GigList:   all gigs sorted by date
-//   /setlist/:gigId   → GigEditor: multi-set drag-and-drop setlist builder
+//   /gigs          → GigList:   all gigs sorted by date
+//   /gigs/:gigId   → GigEditor: multi-set drag-and-drop setlist builder
 //
 // A gig contains N named sets. Each set is an ordered list of songs.
 // A song may not appear more than once across all sets of the same gig.
@@ -27,19 +27,21 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { db } from '../db/index.js'
-import styles from './Setlist.module.css'
+import { exportGig } from '../drive/export.js'
+import { tokenExpiresIn, refreshAccessToken } from '../auth/google.js'
+import styles from './Gigs.module.css'
 
 // ── Type colour map ─────────────────────────────────────────────────────────
 // Same as Repertoire — maps "Type/Subtype" to badge background + text colour.
 const TYPE_COLORS = {
-  'Arrangements/Swing':   { bg: '#1A6B3C', text: '#fff' },
-  'Arrangements/12 Bar':  { bg: '#1a56a0', text: '#fff' },
-  'Arrangements/Bluesy':  { bg: '#5b8dd9', text: '#fff' },
-  'Instrumentals/Swing':  { bg: '#b7791f', text: '#fff' },
-  'Instrumentals/12 Bar': { bg: '#7b3fa0', text: '#fff' },
-  'Lead Sheet/Swing':     { bg: '#C0392B', text: '#fff' },
-  'Lead Sheet/12 Bar':    { bg: '#e07070', text: '#fff' },
-  'Lead Sheet/Bluesy':    { bg: '#c06090', text: '#fff' },
+  'Arrangements/Swing':   { bg: '#1A6B3C', text: '#fff' },  // 10xx green
+  'Arrangements/12 Bar':  { bg: '#1a56a0', text: '#fff' },  // 11xx blue
+  'Arrangements/Bluesy':  { bg: '#5b8dd9', text: '#fff' },  // 12xx
+  'Instrumentals/Swing':  { bg: '#ca8a04', text: '#fff' },  // 20xx yellow
+  'Instrumentals/12 Bar': { bg: '#c2410c', text: '#fff' },  // 21xx orange
+  'Lead Sheet/Swing':     { bg: '#C0392B', text: '#fff' },  // 30xx red
+  'Lead Sheet/12 Bar':    { bg: '#7c3aed', text: '#fff' },  // 31xx purple
+  'Lead Sheet/Bluesy':    { bg: '#c06090', text: '#fff' },  // 32xx
   'Unknown/Unknown':      { bg: '#718096', text: '#fff' },
 }
 
@@ -152,7 +154,7 @@ function GigList() {
       )
       setGigs(rows)
     } catch (err) {
-      console.error('[Setlist] Failed to load gigs:', err)
+      console.error('[Gigs] Failed to load gigs:', err)
     }
   }, [])
 
@@ -180,13 +182,13 @@ function GigList() {
 
   function handleGigCreated(gigId) {
     setShowForm(false)
-    navigate('/setlist/' + gigId)
+    navigate('/gigs/' + gigId)
   }
 
   return (
     <div className={styles.listContainer}>
       <div className={styles.listHeader}>
-        <h2 className={styles.heading}>Setlists</h2>
+        <h2 className={styles.heading}>Gigs</h2>
         <button className={styles.primaryBtn} onClick={() => setShowForm(true)}>
           + New Gig
         </button>
@@ -214,7 +216,7 @@ function GigList() {
               <div
                 key={gig.id}
                 className={styles.gigCard}
-                onClick={() => navigate('/setlist/' + gig.id)}
+                onClick={() => navigate('/gigs/' + gig.id)}
               >
                 <div className={styles.gigCardTop}>
                   <span className={styles.gigName}>{gig.name}</span>
@@ -306,7 +308,7 @@ function GigForm({ existingGigs, onSave, onCancel }) {
       )
       onSave(gigId)
     } catch (err) {
-      console.error('[Setlist] Failed to create gig:', err)
+      console.error('[Gigs] Failed to create gig:', err)
       setError(err.message)
       setSaving(false)
     }
@@ -666,6 +668,17 @@ function GigEditor({ gigId }) {
   const [showDelete, setShowDelete] = useState(false)
   // isLocked: true = read-only; toggled by the lock button; saved immediately
   const [isLocked, setIsLocked]     = useState(true)     // default locked until loaded
+  // parts: which instruments are active for this gig (persisted to gigs.parts)
+  const [parts, setParts]               = useState([])
+  const [activePartsDef, setActivePartsDef] = useState([])  // from settings.active_parts
+  // export panel state
+  const [exportOpen, setExportOpen]     = useState(false)
+  const [exportLog, setExportLog]       = useState([])
+  const [exporting, setExporting]       = useState(false)
+  const [exportDone, setExportDone]     = useState(false)
+  const [exportStage, setExportStage] = useState({ label: '', done: 0, total: 0 })
+  // repoVisible: controls whether the left Repertoire panel is shown
+  const [repoVisible, setRepoVisible]   = useState(true)
 
   // loadedRef prevents auto-save effects from firing during the initial load
   const loadedRef   = useRef(false)
@@ -693,6 +706,12 @@ function GigEditor({ gigId }) {
         setIsLocked(row.locked !== 0)
         setSets(parseStoredSets(JSON.parse(row.setlist || '[]')))
 
+        // Load per-gig parts; fall back to active_parts from settings
+        const partRows = await db.exec(`SELECT value FROM settings WHERE key = 'active_parts'`)
+        const defaultParts = partRows.length > 0 ? JSON.parse(partRows[0].value) : []
+        setActivePartsDef(defaultParts)
+        setParts(row.parts ? JSON.parse(row.parts) : defaultParts)
+
         // Load the full repertoire for the left panel
         const allSongs = await db.exec(
           'SELECT id, idx, key_variant, title, song_type, subtype ' +
@@ -704,7 +723,7 @@ function GigEditor({ gigId }) {
 
         loadedRef.current = true
       } catch (err) {
-        console.error('[Setlist] Load failed:', err)
+        console.error('[Gigs] Load failed:', err)
       }
     }
     load()
@@ -724,7 +743,7 @@ function GigEditor({ gigId }) {
         )
         setSaveStatus('saved')
       } catch (err) {
-        console.error('[Setlist] Sets save failed:', err)
+        console.error('[Gigs] Sets save failed:', err)
         setSaveStatus('error')
       }
     }, 600)
@@ -750,7 +769,7 @@ function GigEditor({ gigId }) {
           ]
         )
       } catch (err) {
-        console.error('[Setlist] Meta save failed:', err)
+        console.error('[Gigs] Meta save failed:', err)
       }
     }, 400)
     return () => clearTimeout(metaSaveRef.current)
@@ -772,7 +791,7 @@ function GigEditor({ gigId }) {
     try {
       await db.run('UPDATE gigs SET locked = ? WHERE id = ?', [next ? 1 : 0, gigId])
     } catch (err) {
-      console.error('[Setlist] Lock save failed:', err)
+      console.error('[Gigs] Lock save failed:', err)
       setIsLocked(isLocked)  // revert on error
     }
   }
@@ -931,10 +950,75 @@ function GigEditor({ gigId }) {
   async function handleDelete() {
     try {
       await db.run('DELETE FROM gigs WHERE id = ?', [gigId])
-      navigate('/setlist')
+      navigate('/gigs')
     } catch (err) {
-      console.error('[Setlist] Delete failed:', err)
+      console.error('[Gigs] Delete failed:', err)
     }
+  }
+
+  // ── Part management ───────────────────────────────────────────────────
+  // Toggles one part on/off and persists the change immediately.
+  async function togglePart(part) {
+    const next = parts.includes(part)
+      ? parts.filter(p => p !== part)
+      : [...parts, part]
+    setParts(next)
+    try {
+      await db.run('UPDATE gigs SET parts = ? WHERE id = ?', [JSON.stringify(next), gigId])
+    } catch (err) {
+      console.error('[Gigs] Part save failed:', err)
+      setParts(parts)  // revert on error
+    }
+  }
+
+  // ── Export ────────────────────────────────────────────────────────────
+  // Opens the progress modal and runs exportGig() from src/drive/export.js.
+  async function startExport() {
+    setExportOpen(true)
+    setExportLog([])
+    setExporting(true)
+    setExportDone(false)
+    setExportStage({ label: '', done: 0, total: 0 })
+
+    // ── Pre-flight auth check ─────────────────────────────────────────────
+    // If the token expires within 10 minutes, try a silent refresh before
+    // starting — avoids a mid-export 401 failure.
+    const msLeft = tokenExpiresIn()
+    if (msLeft < 10 * 60 * 1000) {
+      const isExpired = msLeft < 60_000
+      setExportLog([isExpired
+        ? '⚠ Session has expired — refreshing…'
+        : `⚠ Session expires in ${Math.floor(msLeft / 60000)} min — refreshing…`,
+      ])
+      const refreshed = await refreshAccessToken()
+      if (!refreshed) {
+        setExportLog([`✗ Could not refresh session. Please sign out and sign back in, then try again.`])
+        setExporting(false)
+        setExportDone(true)
+        return
+      }
+      setExportLog(prev => [...prev, '✓ Session refreshed — starting export'])
+    }
+
+    try {
+      // Use a fresh gig row so exportGig sees the latest setlist + current parts
+      const rows     = await db.exec('SELECT * FROM gigs WHERE id = ?', [gigId])
+      const freshGig = rows[0] ?? gig
+      await exportGig({
+        gig:             { ...freshGig, parts: JSON.stringify(parts) },
+        onProgress:      (msg) => setExportLog(prev => [...prev, msg]),
+        onStageProgress: (label, done, total) => setExportStage({ label, done, total }),
+      })
+    } catch (err) {
+      // Normalise: gapi errors reject with { result: { error: { message } } }
+      // rather than a standard Error, so err.message may be undefined.
+      const msg = err?.message
+                || err?.result?.error?.message
+                || (typeof err === 'string' ? err : JSON.stringify(err))
+      setExportLog(prev => [...prev, `✗ Export failed: ${msg}`])
+    }
+    setExporting(false)
+    setExportDone(true)
   }
 
   // ── Filtered left-panel songs ─────────────────────────────────────────
@@ -967,8 +1051,8 @@ function GigEditor({ gigId }) {
     return (
       <div className={styles.listContainer}>
         <p className={styles.muted}>Gig not found.</p>
-        <button className={styles.ghostBtn} onClick={() => navigate('/setlist')}>
-          ← Back to Setlists
+        <button className={styles.ghostBtn} onClick={() => navigate('/gigs')}>
+          ← Back to Gigs
         </button>
       </div>
     )
@@ -982,8 +1066,8 @@ function GigEditor({ gigId }) {
       {/* ── Gig property header ──────────────────────────────────────── */}
       <div className={styles.editorHeader}>
         <div className={styles.headerRow1}>
-          <button className={styles.backBtn} onClick={() => navigate('/setlist')}>
-            ← Setlists
+          <button className={styles.backBtn} onClick={() => navigate('/gigs')}>
+            ← Gigs
           </button>
           <input
             className={styles.gigNameInput}
@@ -1037,7 +1121,82 @@ function GigEditor({ gigId }) {
             readOnly={isLocked}
           />
         </div>
+
+        {/* ── Row 3: per-gig part checkboxes + Export button ───────────── */}
+        <div className={styles.headerRow3}>
+          <span className={styles.partsLabel}>Parts:</span>
+          {activePartsDef.map(part => (
+            <label
+              key={part}
+              className={`${styles.partChip} ${parts.includes(part) ? styles.partChipActive : ''}`}
+            >
+              <input
+                type="checkbox"
+                className={styles.partCheckbox}
+                checked={parts.includes(part)}
+                onChange={() => togglePart(part)}
+              />
+              {part}
+            </label>
+          ))}
+          <button
+            className={styles.exportBtn}
+            onClick={startExport}
+            disabled={parts.length === 0}
+            title={parts.length === 0 ? 'Select at least one part to export' : 'Export gig to Google Drive'}
+          >
+            Export to Drive
+          </button>
+        </div>
       </div>
+
+      {/* ── Export progress modal ────────────────────────────────────── */}
+      {exportOpen && (
+        <div
+          className={styles.modalOverlay}
+          onClick={exportDone ? () => setExportOpen(false) : undefined}
+        >
+          <div className={styles.modalPanel} onClick={e => e.stopPropagation()}>
+            <h3 className={styles.modalTitle}>
+              {exporting ? 'Exporting…' : 'Export complete'}
+            </h3>
+            {/* Single resetting progress bar — label + pct change per stage */}
+            {exportStage.total > 0 && (
+              <div className={styles.exportProgressWrap}>
+                <div className={styles.exportProgressHeader}>
+                  <span className={styles.exportProgressLabel}>{exportStage.label}</span>
+                  <span className={styles.exportProgressPct}>
+                    {Math.round(exportStage.done / exportStage.total * 100)}%
+                  </span>
+                </div>
+                <div className={styles.exportProgressTrack}>
+                  <div
+                    className={styles.exportProgressBar}
+                    style={{ width: `${Math.round(exportStage.done / exportStage.total * 100)}%` }}
+                  />
+                </div>
+              </div>
+            )}
+            <div className={styles.exportLog}>
+              {exportLog.map((line, i) => {
+                const cls = line.startsWith('✗') ? styles.exportLogError
+                          : line.startsWith('⚠') ? styles.exportLogWarn
+                          : line.startsWith('✓') ? styles.exportLogOk
+                          : styles.exportLogLine
+                return <div key={i} className={cls}>{line}</div>
+              })}
+              {exporting && <div className={styles.exportLogLine}>…</div>}
+            </div>
+            {exportDone && (
+              <div className={styles.formActions}>
+                <button className={styles.primaryBtn} onClick={() => setExportOpen(false)}>
+                  Close
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── Delete confirmation modal ─────────────────────────────────── */}
       {showDelete && (
@@ -1070,35 +1229,51 @@ function GigEditor({ gigId }) {
         <div className={styles.editorBody}>
 
           {/* ── Left panel: Repertoire ─────────────────────────────── */}
-          <div className={styles.leftPanel}>
+          <div className={`${styles.leftPanel} ${repoVisible ? '' : styles.leftPanelCollapsed}`}>
             <div className={styles.panelTitle}>
-              Repertoire
-              <span className={styles.panelCount}>{songs.length}</span>
+              {repoVisible && (
+                <>
+                  Repertoire
+                  <span className={styles.panelCount}>{songs.length}</span>
+                </>
+              )}
+              {/* Collapse / expand toggle — always visible */}
+              <button
+                className={styles.repoToggle}
+                onClick={() => setRepoVisible(v => !v)}
+                title={repoVisible ? 'Hide Repertoire' : 'Show Repertoire'}
+              >
+                {repoVisible ? '◀' : '▶'}
+              </button>
             </div>
-            <input
-              className={styles.searchInput}
-              type="text"
-              placeholder="Search title or index…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-            <div className={styles.repoList}>
-              {songs.length === 0 && (
-                <p className={styles.muted}>No songs — sync your library first.</p>
-              )}
-              {filteredSongs.length === 0 && songs.length > 0 && (
-                <p className={styles.muted}>No matches.</p>
-              )}
-              {filteredSongs.map(song => (
-                <DraggableSong
-                  key={song.id}
-                  song={song}
-                  isUsed={allUsedSongIds.has(song.id)}
-                  isLocked={isLocked}
-                  onAdd={addSongToFirstSet}
+            {repoVisible && (
+              <>
+                <input
+                  className={styles.searchInput}
+                  type="text"
+                  placeholder="Search title or index…"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
                 />
-              ))}
-            </div>
+                <div className={styles.repoList}>
+                  {songs.length === 0 && (
+                    <p className={styles.muted}>No songs — sync your library first.</p>
+                  )}
+                  {filteredSongs.length === 0 && songs.length > 0 && (
+                    <p className={styles.muted}>No matches.</p>
+                  )}
+                  {filteredSongs.map(song => (
+                    <DraggableSong
+                      key={song.id}
+                      song={song}
+                      isUsed={allUsedSongIds.has(song.id)}
+                      isLocked={isLocked}
+                      onAdd={addSongToFirstSet}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
           </div>
 
           {/* ── Right area: set columns ────────────────────────────── */}
@@ -1144,10 +1319,10 @@ function GigEditor({ gigId }) {
   )
 }
 
-// ── Setlist (route entry point) ──────────────────────────────────────────────
+// ── Gigs (route entry point) ──────────────────────────────────────────────
 // Routes to GigList when no gigId in URL, GigEditor otherwise.
-// App.jsx defines the route as /setlist/:gigId? (gigId is optional).
-export default function Setlist() {
+// App.jsx defines the route as /gigs/:gigId? (gigId is optional).
+export default function Gigs() {
   const { gigId } = useParams()
   return gigId ? <GigEditor gigId={gigId} /> : <GigList />
 }

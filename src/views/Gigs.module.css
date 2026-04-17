@@ -1,4 +1,4 @@
-0/* src/views/Setlist.module.css */
+/* src/views/Gigs.module.css */
 /* Styles for both the GigList screen and the GigEditor screen. */
 
 /* ── Shared tokens (match App + Repertoire palette) ──────────────────────── */
@@ -441,6 +441,13 @@ select.formInput {
   border: 1px solid #D0D9E8;
   border-radius: 10px;
   overflow: hidden;
+  transition: width 0.2s ease;
+}
+
+/* Collapsed state: narrow enough to show only the toggle button */
+.leftPanelCollapsed {
+  width: 34px;
+  min-width: 34px;
 }
 
 .panelTitle {
@@ -529,7 +536,7 @@ select.formInput {
 
 .repoTitle {
   flex: 1;
-  font-size: 13px;
+  font-size: 16px;
   color: #1B2B4B;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -608,7 +615,9 @@ select.formInput {
 /* ── Set column ──────────────────────────────────────────────────────────── */
 
 .setColumn {
-  width: 256px;
+  min-width: 220px;
+  width: max-content;
+  max-width: 500px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -746,12 +755,9 @@ select.formInput {
 
 .entryTitle {
   flex: 1;
-  font-size: 13px;
+  font-size: 16px;
   color: #1B2B4B;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
+  white-space: nowrap;   /* drives column width via max-content on .setColumn */
 }
 
 .entryUnknown {
@@ -789,7 +795,7 @@ select.formInput {
   display: inline-block;
   border-radius: 5px;
   padding: 2px 6px;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   min-width: 38px;
   text-align: center;
@@ -803,7 +809,7 @@ select.formInput {
   color: #4A5568;
   border-radius: 4px;
   padding: 1px 5px;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   font-family: monospace;
   flex-shrink: 0;
@@ -832,4 +838,192 @@ select.formInput {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ── Header Row 3: part chips + export button ────────────────────────────── */
+
+.headerRow3 {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 0 4px;
+  border-top: 1px solid #EFF2F7;
+  margin-top: 8px;
+}
+
+.partsLabel {
+  font-size: 12px;
+  font-weight: 700;
+  color: #4A5568;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+  margin-right: 4px;
+}
+
+/* Part chip — a checkbox styled as a pill toggle */
+.partChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid #D0D9E8;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #4A5568;
+  background: #F7F9FC;
+  cursor: pointer;
+  font-family: Arial, sans-serif;
+  user-select: none;
+  transition: background 0.13s, border-color 0.13s, color 0.13s;
+}
+
+.partChip:hover {
+  border-color: #1B2B4B;
+  color: #1B2B4B;
+}
+
+/* Active (checked) chip — navy fill */
+.partChipActive {
+  background: #1B2B4B;
+  border-color: #1B2B4B;
+  color: #fff;
+}
+
+.partChipActive:hover {
+  background: #2a3f6b;
+  border-color: #2a3f6b;
+  color: #fff;
+}
+
+/* Hide the native checkbox — the chip border is the visual indicator */
+.partCheckbox {
+  appearance: none;
+  width: 0;
+  height: 0;
+  margin: 0;
+  padding: 0;
+  position: absolute;
+}
+
+.exportBtn {
+  margin-left: auto;
+  background: #C9A84C;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: Arial, sans-serif;
+  transition: background 0.15s;
+}
+
+.exportBtn:hover:not(:disabled) {
+  background: #b7942f;
+}
+
+.exportBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── Export log panel (inside modal) ─────────────────────────────────────── */
+
+.exportLog {
+  background: #0e1620;
+  border-radius: 6px;
+  padding: 12px 14px;
+  font-family: monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  max-height: 380px;
+  overflow-y: auto;
+  margin-bottom: 16px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.exportLogLine {
+  color: #c8d8e8;
+}
+
+.exportLogOk {
+  color: #4ade80;  /* green */
+}
+
+.exportLogWarn {
+  color: #facc15;  /* amber */
+}
+
+.exportLogError {
+  color: #f87171;  /* red */
+}
+
+/* ── Repertoire toggle button ─────────────────────────────────────────────── */
+
+/* Small chevron button at the right of the panel title bar.
+   Stays visible when the panel is collapsed so the user can re-open it. */
+.repoToggle {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: #A0AEC0;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color 0.12s, background 0.12s;
+  flex-shrink: 0;
+}
+
+.repoToggle:hover {
+  color: #1B2B4B;
+  background: #EFF2F7;
+}
+
+/* ── Export progress bar ──────────────────────────────────────────────────── */
+
+.exportProgressWrap {
+  margin-bottom: 12px;
+}
+
+.exportProgressHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 5px;
+}
+
+.exportProgressLabel {
+  font-size: 11px;
+  font-family: monospace;
+  color: #c8d8e8;
+}
+
+.exportProgressPct {
+  font-size: 11px;
+  font-weight: 700;
+  font-family: monospace;
+  color: #c8d8e8;
+  min-width: 32px;
+  text-align: right;
+}
+
+.exportProgressTrack {
+  height: 8px;
+  background: #1e2d3f;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.exportProgressBar {
+  height: 100%;
+  background: #C9A84C;
+  border-radius: 4px;
+  transition: width 0.25s ease;
 }

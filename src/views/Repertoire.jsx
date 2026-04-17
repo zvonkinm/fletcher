@@ -8,14 +8,14 @@ import styles from './Repertoire.module.css'
 // Maps "Type/Subtype" → background + text colour for the index badge.
 // Colours match the original Google Colab notebook's colour scheme.
 const TYPE_COLORS = {
-  'Arrangements/Swing':   { bg: '#1A6B3C', text: '#fff' },
-  'Arrangements/12 Bar':  { bg: '#1a56a0', text: '#fff' },
-  'Arrangements/Bluesy':  { bg: '#5b8dd9', text: '#fff' },
-  'Instrumentals/Swing':  { bg: '#b7791f', text: '#fff' },
-  'Instrumentals/12 Bar': { bg: '#7b3fa0', text: '#fff' },
-  'Lead Sheet/Swing':     { bg: '#C0392B', text: '#fff' },
-  'Lead Sheet/12 Bar':    { bg: '#e07070', text: '#fff' },
-  'Lead Sheet/Bluesy':    { bg: '#c06090', text: '#fff' },
+  'Arrangements/Swing':   { bg: '#1A6B3C', text: '#fff' },  // 10xx green
+  'Arrangements/12 Bar':  { bg: '#1a56a0', text: '#fff' },  // 11xx blue
+  'Arrangements/Bluesy':  { bg: '#5b8dd9', text: '#fff' },  // 12xx
+  'Instrumentals/Swing':  { bg: '#ca8a04', text: '#fff' },  // 20xx yellow
+  'Instrumentals/12 Bar': { bg: '#c2410c', text: '#fff' },  // 21xx orange
+  'Lead Sheet/Swing':     { bg: '#C0392B', text: '#fff' },  // 30xx red
+  'Lead Sheet/12 Bar':    { bg: '#7c3aed', text: '#fff' },  // 31xx purple
+  'Lead Sheet/Bluesy':    { bg: '#c06090', text: '#fff' },  // 32xx
   'Unknown/Unknown':      { bg: '#718096', text: '#fff' },
 }
 

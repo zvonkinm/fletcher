@@ -46,6 +46,13 @@ self.onmessage = ({ data }) => {
     } else if (type === 'run') {
       const result = run(sql, params)
       postMessage({ id, type: 'result', ...result })
+    } else if (type === 'close') {
+      // Called from the main thread's beforeunload handler so the OPFS sync
+      // access handle is released before the worker is terminated. Without this
+      // a hard refresh leaves the lock held by the dying worker, causing
+      // SQLITE_CANTOPEN on the very next open attempt.
+      if (db) { db.close(); db = null }
+      // No reply needed — main thread terminates us immediately after
     } else {
       postMessage({ id, type: 'error', message: `Unknown message type: ${type}` })
     }

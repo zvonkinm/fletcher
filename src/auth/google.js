@@ -220,3 +220,62 @@ export function signOut() {
 export function isSignedIn() {
   return !!_accessToken
 }
+
+/**
+ * Returns milliseconds until the current access token expires.
+ * Returns 0 if the token is already expired or absent.
+ */
+export function tokenExpiresIn() {
+  const expiresAt = parseInt(sessionStorage.getItem('token_expires_at') || '0')
+  return Math.max(0, expiresAt - Date.now())
+}
+
+/**
+ * Try to exchange the stored refresh token for a fresh access token.
+ * The Cloudflare Worker must handle { grant_type: 'refresh_token', refresh_token }.
+ * Returns true on success, false if no refresh token is available or the request fails.
+ */
+export async function refreshAccessToken() {
+  const refreshToken = sessionStorage.getItem('refresh_token')
+  if (!refreshToken) {
+    console.warn('[auth] No refresh token stored — cannot refresh silently')
+    return false
+  }
+
+  try {
+    const response = await fetch(AUTH_WORKER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        grant_type:    'refresh_token',
+        refresh_token: refreshToken,
+      }),
+    })
+    const data = await response.json()
+
+    if (data.error) {
+      console.error('[auth] Refresh failed:', data.error, data.error_description)
+      return false
+    }
+
+    _accessToken = data.access_token
+    const expiresAt = Date.now() + (parseInt(data.expires_in || '3600') * 1000)
+    sessionStorage.setItem('access_token', _accessToken)
+    sessionStorage.setItem('token_expires_at', String(expiresAt))
+    // Google may rotate the refresh token on each use
+    if (data.refresh_token) {
+      sessionStorage.setItem('refresh_token', data.refresh_token)
+    }
+
+    // Keep gapi in sync with the new token
+    if (window.gapi?.client) {
+      window.gapi.client.setToken({ access_token: _accessToken })
+    }
+
+    console.log('[auth] Token refreshed silently')
+    return true
+  } catch (err) {
+    console.error('[auth] Refresh request failed:', err)
+    return false
+  }
+}

@@ -6,9 +6,10 @@ import { initGsi, initGapi, triggerSignIn, signOut, isSignedIn,
 import { db } from './db/index.js'
 import NavBar from './components/NavBar.jsx'
 import Repertoire from './views/Repertoire.jsx'
-import Setlist from './views/Setlist.jsx'
+import Gigs from './views/Gigs.jsx'
 import Settings from './views/Settings.jsx'
 import styles from './App.module.css'
+import logoUrl from './assets/logo.js'
 
 // Initialise GSI once at module level — outside the React component so that
 // React StrictMode's double-invocation doesn't create two token clients.
@@ -113,6 +114,7 @@ export default function App() {
     return (
       <div className={styles.center}>
         <div className={styles.loginCard}>
+          <img src={logoUrl} alt="Fletcher Henderson portrait" className={styles.logoMark} />
           <h1 className={styles.logo}>Fletcher</h1>
           <p className={styles.subtitle}>Band Manager</p>
           <button className={styles.btn} onClick={handleSignIn}>
@@ -132,7 +134,7 @@ export default function App() {
           {/* Default route redirects to Repertoire */}
           <Route path="/" element={<Navigate to="/repertoire" replace />} />
           <Route path="/repertoire" element={<Repertoire />} />
-          <Route path="/setlist/:gigId?" element={<Setlist />} />
+          <Route path="/gigs/:gigId?" element={<Gigs />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </main>

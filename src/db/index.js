@@ -16,6 +16,14 @@ class Database {
     this._seq = 0
     this._worker.onmessage = this._onMessage.bind(this)
 
+    // Release the OPFS file lock before the page unloads. Without this a hard
+    // refresh (Ctrl+R) kills the worker mid-flight and leaves the lock held
+    // until the browser GCs the old worker — causing SQLITE_CANTOPEN on reload.
+    window.addEventListener('beforeunload', () => {
+      this._worker.postMessage({ type: 'close' })
+      this._worker.terminate()
+    })
+
     // Resolves once the worker signals 'ready' and schema + seed are applied
     this.ready = new Promise((resolve, reject) => {
       this._resolveReady = resolve

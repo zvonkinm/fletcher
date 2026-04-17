@@ -68,6 +68,36 @@ export async function applySchema(db) {
     await db.run('UPDATE gigs SET locked = 1')
     console.log('[db/schema] Migration: added gigs.locked, locked existing gigs')
   }
+  if (!gigColNames.has('parts')) {
+    if (gigColNames.has('seats')) {
+      // Rename the column that was added in the previous version of the app.
+      await db.run('ALTER TABLE gigs RENAME COLUMN seats TO parts')
+      console.log('[db/schema] Migration: renamed gigs.seats → gigs.parts')
+    } else {
+      // Fresh install — add the parts column directly.
+      await db.run('ALTER TABLE gigs ADD COLUMN parts TEXT')
+      // Populate existing gigs from active_parts (or fall back to active_seats
+      // if the settings key hasn't been migrated yet on this run).
+      const rows = await db.exec(
+        `SELECT value FROM settings WHERE key IN ('active_parts','active_seats') ORDER BY key ASC LIMIT 1`
+      )
+      if (rows.length > 0) {
+        await db.run('UPDATE gigs SET parts = ?', [rows[0].value])
+      }
+      console.log('[db/schema] Migration: added gigs.parts')
+    }
+  }
+
+  // Migrate settings key active_seats → active_parts (one-time, safe to re-run).
+  const oldKey = await db.exec(`SELECT value FROM settings WHERE key = 'active_seats'`)
+  if (oldKey.length > 0) {
+    await db.run(
+      `INSERT OR IGNORE INTO settings (key, value) VALUES ('active_parts', ?)`,
+      [oldKey[0].value]
+    )
+    await db.run(`DELETE FROM settings WHERE key = 'active_seats'`)
+    console.log('[db/schema] Migration: renamed settings key active_seats → active_parts')
+  }
 
   console.log('[db/schema] Schema applied')
 }

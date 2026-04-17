@@ -1,56 +1,115 @@
 // src/views/Settings.jsx
-// Step 5 will build this out fully.
-// For now: shows current settings values from the DB.
+// Minimal settings page — Step 5 will build this out fully.
+// Currently exposes one editable field (export_folder_name) and shows
+// the remaining settings as a read-only diagnostic table.
+
 import React, { useEffect, useState } from 'react'
 import { db } from '../db/index.js'
+import styles from './Settings.module.css'
 
 export default function Settings() {
-  const [settings, setSettings] = useState(null)
+  const [settings, setSettings]             = useState(null)   // all rows
+  const [exportFolder, setExportFolder]     = useState('')     // editable field value
+  const [exportFolderSaved, setExportFolderSaved] = useState('')  // last-saved value
+  const [saveStatus, setSaveStatus]         = useState('')     // 'saved' | 'error' | ''
 
+  // ── Load settings from DB ──────────────────────────────────────────────
   useEffect(() => {
     db.exec('SELECT key, value FROM settings ORDER BY key')
-      .then(setSettings)
+      .then((rows) => {
+        setSettings(rows)
+        const ef = rows.find(r => r.key === 'export_folder_name')
+        if (ef) {
+          const val = JSON.parse(ef.value)
+          setExportFolder(val)
+          setExportFolderSaved(val)
+        }
+      })
       .catch(console.error)
   }, [])
 
+  // ── Save export_folder_name ────────────────────────────────────────────
+  async function handleSaveExportFolder() {
+    try {
+      await db.run(
+        `INSERT OR REPLACE INTO settings (key, value) VALUES ('export_folder_name', ?)`,
+        [JSON.stringify(exportFolder.trim())]
+      )
+      setExportFolderSaved(exportFolder.trim())
+      setSaveStatus('saved')
+      setTimeout(() => setSaveStatus(''), 2000)
+    } catch (err) {
+      console.error('[Settings] Save failed:', err)
+      setSaveStatus('error')
+    }
+  }
+
+  // Keys shown in the editable section — excluded from the raw table below
+  const EDITABLE_KEYS = new Set(['export_folder_name'])
+
   return (
-    <div>
-      <h2 style={styles.heading}>Settings</h2>
-      {settings === null && <p style={styles.sub}>Loading…</p>}
-      {settings && (
-        <table style={styles.table}>
-          <thead>
-            <tr>
-              <th style={styles.th}>Key</th>
-              <th style={styles.th}>Value</th>
-            </tr>
-          </thead>
-          <tbody>
-            {settings.map((s) => (
-              <tr key={s.key}>
-                <td style={styles.tdKey}>{s.key}</td>
-                <td style={styles.tdVal}>
-                  <pre style={styles.pre}>
-                    {JSON.stringify(JSON.parse(s.value), null, 2)}
-                  </pre>
-                </td>
+    <div className={styles.container}>
+      <h2 className={styles.heading}>Settings</h2>
+
+      {/* ── Editable section ── */}
+      <section className={styles.section}>
+        <h3 className={styles.sectionTitle}>Export</h3>
+        <label className={styles.fieldLabel}>
+          Export folder (Drive path prefix — use slashes for nested folders)
+          <div className={styles.fieldRow}>
+            <input
+              className={styles.fieldInput}
+              value={exportFolder}
+              onChange={e => setExportFolder(e.target.value)}
+              placeholder="e.g. The Vintage Ties 2021"
+            />
+            <button
+              className={styles.saveBtn}
+              onClick={handleSaveExportFolder}
+              disabled={exportFolder.trim() === exportFolderSaved}
+            >
+              Save
+            </button>
+            {saveStatus === 'saved' && <span className={styles.savedMsg}>Saved</span>}
+            {saveStatus === 'error' && <span className={styles.errorMsg}>Error</span>}
+          </div>
+        </label>
+        <p className={styles.hint}>
+          Exports go to: <code>{exportFolder || '…'}/Setlists/&lt;gig name&gt;/&lt;part&gt;/</code>
+        </p>
+      </section>
+
+      {/* ── Raw settings table (diagnostic) ── */}
+      <section className={styles.section}>
+        <h3 className={styles.sectionTitle}>All settings (read-only)</h3>
+        {settings === null && <p className={styles.muted}>Loading…</p>}
+        {settings && (
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th className={styles.th}>Key</th>
+                <th className={styles.th}>Value</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-      <p style={styles.note}>Full settings editor coming in Step 5.</p>
+            </thead>
+            <tbody>
+              {settings
+                .filter(s => !EDITABLE_KEYS.has(s.key))
+                .map(s => (
+                  <tr key={s.key}>
+                    <td className={styles.tdKey}>{s.key}</td>
+                    <td className={styles.tdVal}>
+                      <pre className={styles.pre}>
+                        {JSON.stringify(JSON.parse(s.value), null, 2)}
+                      </pre>
+                    </td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      <p className={styles.muted}>Full settings editor coming in Step 5.</p>
     </div>
   )
-}
-
-const styles = {
-  heading: { color: '#1B2B4B', marginTop: 0 },
-  sub: { color: '#4A5568', fontSize: 15 },
-  table: { borderCollapse: 'collapse', fontSize: 13, fontFamily: 'Arial, sans-serif', width: '100%' },
-  th: { textAlign: 'left', padding: '8px 12px', background: '#EFF2F7', color: '#1B2B4B', fontWeight: 600, borderBottom: '2px solid #D0D9E8' },
-  tdKey: { padding: '8px 12px', fontWeight: 600, color: '#4A5568', verticalAlign: 'top', whiteSpace: 'nowrap', borderBottom: '1px solid #EFF2F7' },
-  tdVal: { padding: '8px 12px', borderBottom: '1px solid #EFF2F7' },
-  pre: { margin: 0, fontSize: 11, color: '#4A5568', whiteSpace: 'pre-wrap', wordBreak: 'break-all' },
-  note: { color: '#A0AEC0', fontSize: 13, fontStyle: 'italic', marginTop: 24 },
 }

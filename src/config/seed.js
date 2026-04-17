@@ -1,7 +1,7 @@
 // src/config/seed.js
 // Runs once when the database is empty.
-// Inserts: type map, part definitions, blacklist, active seats, master folder,
-// and 5 historical gigs.
+// Inserts: type map, part definitions, blacklist, active parts, master folder,
+// export folder, and 5 historical gigs.
 
 // ── Config defaults ────────────────────────────────────────────────────────
 
@@ -49,7 +49,7 @@ const PART_DEFINITIONS = {
     raw: ['trumpet bb', 'trumpet in bb'],
     alt: ['Clarinet', 'Lead Sheet Bb', 'Tenor Saxophone'],
   },
-  // Internal seats — used in alt chains only, never printed directly
+  // Internal parts — used in alt chains only, never printed directly
   Concert: {
     raw: ['concert'],
     alt: ['Electric Guitar', 'Lead Sheet C'],
@@ -71,7 +71,7 @@ const PART_DEFINITIONS = {
 
 const BLACKLIST = ['ZZZZ', '1020']
 
-const ACTIVE_SEATS = [
+const ACTIVE_PARTS = [
   'Vocals',
   'Clarinet',
   'Tenor Saxophone',
@@ -83,6 +83,11 @@ const ACTIVE_SEATS = [
 ]
 
 const MASTER_FOLDER_NAME = 'The Vintage Ties 2021'
+
+// Top-level Drive folder where exported setlists are written.
+// Structure: <EXPORT_FOLDER>/Setlists/<gig name>/<part>/
+// Configurable in Settings.
+const EXPORT_FOLDER_NAME = 'The Vintage Ties 2021'
 
 // ── Historical gigs ────────────────────────────────────────────────────────
 
@@ -156,8 +161,9 @@ export async function seedIfEmpty(db) {
       ['type_map', JSON.stringify(TYPE_MAP)],
       ['part_definitions', JSON.stringify(PART_DEFINITIONS)],
       ['blacklist', JSON.stringify(BLACKLIST)],
-      ['active_seats', JSON.stringify(ACTIVE_SEATS)],
+      ['active_parts', JSON.stringify(ACTIVE_PARTS)],
       ['master_folder_name', JSON.stringify(MASTER_FOLDER_NAME)],
+      ['export_folder_name', JSON.stringify(EXPORT_FOLDER_NAME)],
       ['seeded', JSON.stringify(true)],
     ]
 
@@ -170,16 +176,18 @@ export async function seedIfEmpty(db) {
 
     // Historical gigs — seeded as locked=1 so they are read-only by default.
     // The user must explicitly unlock a gig to edit it.
+    // parts defaults to ACTIVE_PARTS for all seeded gigs; adjust per gig in the editor.
     for (const gig of SEED_GIGS) {
       await tx.run(
-        `INSERT OR IGNORE INTO gigs (id, name, date, setlist, print_sublists, locked)
-         VALUES (?, ?, ?, ?, ?, 1)`,
+        `INSERT OR IGNORE INTO gigs (id, name, date, setlist, print_sublists, locked, parts)
+         VALUES (?, ?, ?, ?, ?, 1, ?)`,
         [
           gig.id,
           gig.name,
           gig.date,
           JSON.stringify(gig.setlist),
           JSON.stringify([]),
+          JSON.stringify(ACTIVE_PARTS),
         ]
       )
     }

@@ -13,11 +13,20 @@
 }
 
 .brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-weight: 700;
   font-size: 20px;
   color: #1B2B4B;
   letter-spacing: -0.5px;
   margin-right: 24px;
+}
+
+.brandLogo {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
 }
 
 .links {

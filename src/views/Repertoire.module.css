@@ -183,7 +183,7 @@
   display: inline-block;
   border-radius: 6px;
   padding: 2px 8px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   min-width: 42px;
   text-align: center;
@@ -196,7 +196,7 @@
   color: #4A5568;
   border-radius: 4px;
   padding: 1px 6px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   font-family: monospace;
   flex-shrink: 0;
@@ -206,7 +206,7 @@
   flex: 1;
   font-weight: 600;
   color: #1B2B4B;
-  font-size: 14px;
+  font-size: 16px;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

@@ -2,11 +2,15 @@
 import React from 'react'
 import { NavLink } from 'react-router-dom'
 import styles from './NavBar.module.css'
+import logoUrl from '../assets/logo.js'
 
 export default function NavBar({ onSignOut }) {
   return (
     <nav className={styles.nav}>
-      <span className={styles.brand}>Fletcher</span>
+      <span className={styles.brand}>
+        <img src={logoUrl} alt="" className={styles.brandLogo} aria-hidden="true" />
+        Fletcher
+      </span>
 
       <div className={styles.links}>
         {/* NavLink automatically adds an "active" class when the route matches.
@@ -21,12 +25,12 @@ export default function NavBar({ onSignOut }) {
           Repertoire
         </NavLink>
         <NavLink
-          to="/setlist"
+          to="/gigs"
           className={({ isActive }) =>
             isActive ? `${styles.link} ${styles.linkActive}` : styles.link
           }
         >
-          Setlists
+          Gigs
         </NavLink>
         <NavLink
           to="/settings"

@@ -36,6 +36,15 @@
   min-width: 320px;
 }
 
+.logoMark {
+  width: 88px;
+  height: 88px;
+  margin-bottom: 16px;
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+}
+
 .logo {
   font-size: 40px;
   font-weight: 700;

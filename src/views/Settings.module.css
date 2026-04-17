@@ -1,0 +1,161 @@
+/* src/views/Settings.module.css */
+
+.container {
+  max-width: 760px;
+  margin: 0 auto;
+  font-family: Arial, sans-serif;
+}
+
+.heading {
+  color: #1B2B4B;
+  margin-top: 0;
+}
+
+/* ── Sections ─────────────────────────────────────────────────────────────── */
+
+.section {
+  margin-bottom: 32px;
+}
+
+.sectionTitle {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1B2B4B;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0 0 14px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #D0D9E8;
+}
+
+/* ── Editable field ───────────────────────────────────────────────────────── */
+
+.fieldLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1B2B4B;
+}
+
+.fieldRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.fieldInput {
+  padding: 8px 12px;
+  border: 1px solid #D0D9E8;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: Arial, sans-serif;
+  color: #1B2B4B;
+  background: #fff;
+  outline: none;
+  width: 320px;
+  transition: border-color 0.15s;
+}
+
+.fieldInput:focus {
+  border-color: #1B2B4B;
+}
+
+.saveBtn {
+  background: #1B2B4B;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: Arial, sans-serif;
+  transition: background 0.15s;
+}
+
+.saveBtn:hover:not(:disabled) {
+  background: #2a3f6b;
+}
+
+.saveBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.savedMsg {
+  font-size: 13px;
+  color: #1A6B3C;
+  font-weight: 600;
+}
+
+.errorMsg {
+  font-size: 13px;
+  color: #C0392B;
+  font-weight: 600;
+}
+
+.hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #A0AEC0;
+}
+
+.hint code {
+  background: #EFF2F7;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: monospace;
+  font-size: 12px;
+  color: #4A5568;
+}
+
+/* ── Raw settings table ───────────────────────────────────────────────────── */
+
+.table {
+  border-collapse: collapse;
+  font-size: 13px;
+  width: 100%;
+}
+
+.th {
+  text-align: left;
+  padding: 8px 12px;
+  background: #EFF2F7;
+  color: #1B2B4B;
+  font-weight: 600;
+  border-bottom: 2px solid #D0D9E8;
+}
+
+.tdKey {
+  padding: 8px 12px;
+  font-weight: 600;
+  color: #4A5568;
+  vertical-align: top;
+  white-space: nowrap;
+  border-bottom: 1px solid #EFF2F7;
+}
+
+.tdVal {
+  padding: 8px 12px;
+  border-bottom: 1px solid #EFF2F7;
+}
+
+.pre {
+  margin: 0;
+  font-size: 11px;
+  color: #4A5568;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-family: monospace;
+}
+
+/* ── Muted text ───────────────────────────────────────────────────────────── */
+
+.muted {
+  color: #A0AEC0;
+  font-size: 13px;
+  font-style: italic;
+  margin-top: 24px;
+}
