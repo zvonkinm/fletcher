@@ -1,199 +1,353 @@
 // src/views/Repertoire.jsx
-import React, { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
+import * as pdfjsLib from 'pdfjs-dist'
+import PdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { db } from '../db/index.js'
 import { syncLibrary } from '../drive/sync.js'
+import { fetchPdfBytes } from '../drive/files.js'
 import styles from './Repertoire.module.css'
 
+// Set up PDF.js worker once at module level
+pdfjsLib.GlobalWorkerOptions.workerSrc = PdfWorkerUrl
+
+// ── PDF bytes cache ────────────────────────────────────────────────────────
+// Keyed by Drive file ID. Avoids re-downloading when switching parts or
+// revisiting a song in the same session.
+const pdfBytesCache = new Map()
+
 // ── Type colour map ────────────────────────────────────────────────────────
-// Maps "Type/Subtype" → background + text colour for the index badge.
-// Colours match the original Google Colab notebook's colour scheme.
 const TYPE_COLORS = {
-  'Arrangements/Swing':   { bg: '#1A6B3C', text: '#fff' },  // 10xx green
-  'Arrangements/12 Bar':  { bg: '#1a56a0', text: '#fff' },  // 11xx blue
-  'Arrangements/Bluesy':  { bg: '#5b8dd9', text: '#fff' },  // 12xx
-  'Instrumentals/Swing':  { bg: '#ca8a04', text: '#fff' },  // 20xx yellow
-  'Instrumentals/12 Bar': { bg: '#c2410c', text: '#fff' },  // 21xx orange
-  'Lead Sheet/Swing':     { bg: '#C0392B', text: '#fff' },  // 30xx red
-  'Lead Sheet/12 Bar':    { bg: '#7c3aed', text: '#fff' },  // 31xx purple
-  'Lead Sheet/Bluesy':    { bg: '#c06090', text: '#fff' },  // 32xx
+  'Arrangements/Swing':   { bg: '#1A6B3C', text: '#fff' },
+  'Arrangements/12 Bar':  { bg: '#1a56a0', text: '#fff' },
+  'Arrangements/Bluesy':  { bg: '#5b8dd9', text: '#fff' },
+  'Instrumentals/Swing':  { bg: '#ca8a04', text: '#fff' },
+  'Instrumentals/12 Bar': { bg: '#c2410c', text: '#fff' },
+  'Lead Sheet/Swing':     { bg: '#C0392B', text: '#fff' },
+  'Lead Sheet/12 Bar':    { bg: '#7c3aed', text: '#fff' },
+  'Lead Sheet/Bluesy':    { bg: '#c06090', text: '#fff' },
   'Unknown/Unknown':      { bg: '#718096', text: '#fff' },
 }
 
-// ── IndexBadge ─────────────────────────────────────────────────────────────
-// Coloured pill showing the 4-digit song index.
-// Colour is determined by song type + subtype.
 function IndexBadge({ idx, songType, subtype }) {
-  const key = songType + '/' + subtype
-  const colors = TYPE_COLORS[key] || TYPE_COLORS['Unknown/Unknown']
+  const key = (songType ?? 'Unknown') + '/' + (subtype ?? 'Unknown')
+  const { bg, text } = TYPE_COLORS[key] ?? TYPE_COLORS['Unknown/Unknown']
   return (
-    // style= is still used here because the colour is dynamic (data-driven),
-    // which CSS Modules can't handle on its own.
-    <span className={styles.badge} style={{ background: colors.bg, color: colors.text }}>
+    <span className={styles.badge} style={{ background: bg, color: text }}>
       {idx}
     </span>
   )
 }
 
 // ── SyncPanel ──────────────────────────────────────────────────────────────
-// The "↻ Sync Library" button + progress/result display.
-// onSyncComplete is called after a successful sync so the song list reloads.
 function SyncPanel({ onSyncComplete }) {
-  const [state, setState] = useState('idle') // idle | syncing | done | error
-  const [progress, setProgress] = useState('')
-  const [stats, setStats] = useState(null)
-  const [error, setError] = useState(null)
+  const [state, setState]           = useState('idle')
+  const [progress, setProgress]     = useState('')
+  const [stats, setStats]           = useState(null)
+  const [error, setError]           = useState(null)
   const [lastSynced, setLastSynced] = useState(null)
   const [showWarnings, setShowWarnings] = useState(false)
 
-  // Load the last-synced timestamp from the DB on mount and after each sync
   useEffect(() => {
     db.exec("SELECT value FROM settings WHERE key = 'last_synced'")
       .then(rows => {
-        if (rows.length) {
-          // JSON.parse unwraps the stored number, then we format it as a local date string
-          setLastSynced(new Date(JSON.parse(rows[0].value)).toLocaleString())
-        }
+        if (rows.length) setLastSynced(new Date(JSON.parse(rows[0].value)).toLocaleString())
       })
-  }, [stats]) // re-run when stats changes (i.e. after a sync completes)
+  }, [stats])
 
   async function handleSync() {
-    setState('syncing')
-    setError(null)
-    setStats(null)
-    setShowWarnings(false)
+    setState('syncing'); setError(null); setStats(null); setShowWarnings(false)
     try {
-      // syncLibrary accepts a progress callback that fires on each folder scanned
       const result = await syncLibrary((msg, current, total) => {
-        setProgress(total > 0 ? msg + ' (' + current + '/' + total + ')' : msg)
+        setProgress(total > 0 ? `${msg} (${current}/${total})` : msg)
       })
-      setStats(result)
-      setState('done')
-      onSyncComplete() // tell Repertoire to reload its song list
+      setStats(result); setState('done'); onSyncComplete()
     } catch (err) {
-      console.error('[Sync] Error:', err)
-      setError(err.message)
-      setState('error')
+      console.error('[Sync] Error:', err); setError(err.message); setState('error')
     }
   }
 
   return (
     <div className={styles.syncPanel}>
       <div className={styles.syncRow}>
-        <button
-          className={styles.syncBtn}
-          disabled={state === 'syncing'}
-          onClick={handleSync}
-        >
+        <button className={styles.syncBtn} disabled={state === 'syncing'} onClick={handleSync}>
           {state === 'syncing' ? '⏳ Syncing…' : '↻ Sync Library'}
         </button>
-        {lastSynced && (
-          <span className={styles.lastSynced}>Last synced: {lastSynced}</span>
-        )}
+        {lastSynced && <span className={styles.lastSynced}>Last synced: {lastSynced}</span>}
       </div>
-
-      {/* Progress message shown while syncing */}
-      {state === 'syncing' && (
-        <p className={styles.progressMsg}>{progress}</p>
-      )}
-
-      {/* Stats summary shown after a successful sync */}
+      {state === 'syncing' && <p className={styles.progressMsg}>{progress}</p>}
       {state === 'done' && stats && (
         <div className={styles.statsRow}>
           <span className={styles.statGreen}>+{stats.added} new</span>
           <span className={styles.statBlue}>{stats.updated} updated</span>
-          {stats.inactive > 0 && (
-            <span className={styles.statGray}>{stats.inactive} inactive</span>
-          )}
-          {/* Warnings are shown as a clickable count that expands a list */}
+          {stats.inactive > 0 && <span className={styles.statGray}>{stats.inactive} inactive</span>}
           {stats.warnings.length > 0 && (
-            <button
-              className={styles.statAmber}
-              onClick={() => setShowWarnings(w => !w)}
-            >
+            <button className={styles.statAmber} onClick={() => setShowWarnings(w => !w)}>
               ⚠ {stats.warnings.length} warning{stats.warnings.length > 1 ? 's' : ''} {showWarnings ? '▲' : '▼'}
             </button>
           )}
         </div>
       )}
-      {/* Expanded warnings list */}
       {state === 'done' && showWarnings && stats?.warnings.length > 0 && (
         <ul className={styles.warningsList}>
-          {stats.warnings.map((w, i) => (
-            <li key={i} className={styles.warningItem}>{w}</li>
-          ))}
+          {stats.warnings.map((w, i) => <li key={i} className={styles.warningItem}>{w}</li>)}
         </ul>
       )}
-
-      {state === 'error' && (
-        <p className={styles.errorMsg}>{error}</p>
-      )}
+      {state === 'error' && <p className={styles.errorMsg}>{error}</p>}
     </div>
   )
 }
 
-// ── SongDetail ─────────────────────────────────────────────────────────────
-// Modal overlay showing full details of a selected song.
-// Clicking the overlay background or the ✕ button closes it.
-function SongDetail({ song, onClose }) {
-  if (!song) return null
+// ── PdfViewer ──────────────────────────────────────────────────────────────
+// Right-side panel. Two modes, no explicit toggle:
+//   details — lists available parts; clicking a part card enters pdf mode
+//   pdf     — renders the part; "← Details" link returns to details mode
+//
+// Clicking a different song in the list remounts this component (via key prop),
+// which resets to details mode automatically.
+// Default part: Rhythm Guitar if available, else first.
+function PdfViewer({ song }) {
+  const rawParts       = JSON.parse(song.parts || '{}')
+  const availableParts = Object.entries(rawParts).filter(([, id]) => !!id).map(([n]) => n)
+  const missingParts   = Object.keys(rawParts).filter(n => !rawParts[n])
 
-  // song.parts is stored as a JSON string in SQLite — parse it back to an object
-  const parts = JSON.parse(song.parts || '{}')
-  const partNames = Object.keys(parts)
+  // Prefer Rhythm Guitar as the default part
+  function defaultPart(avail) {
+    return avail.includes('Rhythm Guitar') ? 'Rhythm Guitar' : avail[0] ?? null
+  }
+
+  const [viewMode,     setViewMode]     = useState('details')  // 'details' | 'pdf'
+  const [selectedPart, setSelectedPart] = useState(() => defaultPart(availableParts))
+  const [pdfDoc,       setPdfDoc]       = useState(null)
+  const [pageNum,      setPageNum]      = useState(1)
+  const [numPages,     setNumPages]     = useState(0)
+  const [scale,        setScale]        = useState(1.5)
+  const [loading,      setLoading]      = useState(false)
+  const [error,        setError]        = useState(null)
+
+  const canvasRef     = useRef(null)
+  const wrapRef       = useRef(null)
+  const renderTaskRef = useRef(null)
+
+  // ── Reset when song changes ───────────────────────────────────────────
+  useEffect(() => {
+    const avail = Object.entries(JSON.parse(song.parts || '{}')).filter(([, id]) => !!id).map(([n]) => n)
+    setSelectedPart(defaultPart(avail))
+    setViewMode('details')
+    setPageNum(1); setPdfDoc(null); setNumPages(0); setError(null)
+  }, [song.id])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Load PDF when part or mode changes (only loads in pdf mode) ───────
+  useEffect(() => {
+    if (viewMode !== 'pdf' || !selectedPart) return
+    const fileId = rawParts[selectedPart]
+    if (!fileId) return
+
+    let cancelled = false
+    setLoading(true); setError(null); setPdfDoc(null); setPageNum(1)
+
+    ;(async () => {
+      try {
+        let bytes = pdfBytesCache.get(fileId)
+        if (!bytes) {
+          const buf = await fetchPdfBytes(fileId)
+          bytes = new Uint8Array(buf)
+          pdfBytesCache.set(fileId, bytes)
+        }
+        if (cancelled) return
+        const doc = await pdfjsLib.getDocument({ data: bytes.slice() }).promise
+        if (cancelled) return
+        setPdfDoc(doc); setNumPages(doc.numPages); setPageNum(1)
+      } catch (err) {
+        if (!cancelled) setError(err.message)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+
+    return () => { cancelled = true }
+  }, [song.id, selectedPart, viewMode])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Fit-width when PDF first loads ───────────────────────────────────
+  useEffect(() => {
+    if (!pdfDoc || !wrapRef.current) return
+    pdfDoc.getPage(1).then(page => {
+      const naturalW   = page.getViewport({ scale: 1 }).width
+      const containerW = wrapRef.current?.clientWidth ?? 800
+      setScale((containerW - 40) / naturalW)
+    })
+  }, [pdfDoc])
+
+  // ── Render page ───────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!pdfDoc || !canvasRef.current || viewMode !== 'pdf') return
+    let cancelled = false
+    if (renderTaskRef.current) { renderTaskRef.current.cancel(); renderTaskRef.current = null }
+
+    pdfDoc.getPage(pageNum).then(page => {
+      if (cancelled || !canvasRef.current) return
+      const viewport = page.getViewport({ scale })
+      const canvas   = canvasRef.current
+      canvas.width   = viewport.width
+      canvas.height  = viewport.height
+      const task = page.render({ canvasContext: canvas.getContext('2d'), viewport })
+      renderTaskRef.current = task
+      task.promise.catch(err => {
+        if (err.name !== 'RenderingCancelledException') console.error('[PdfViewer]', err)
+      })
+    })
+    return () => { cancelled = true }
+  }, [pdfDoc, pageNum, scale, viewMode])
+
+  // ── Controls ──────────────────────────────────────────────────────────
+  function fitWidth() {
+    if (!pdfDoc || !wrapRef.current) return
+    pdfDoc.getPage(pageNum).then(page => {
+      const naturalW   = page.getViewport({ scale: 1 }).width
+      const containerW = wrapRef.current?.clientWidth ?? 800
+      setScale((containerW - 40) / naturalW)
+    })
+  }
+
+  // Open a specific part directly in PDF mode (called from the details part cards)
+  function openPartInPdf(partName) {
+    setSelectedPart(partName)
+    setViewMode('pdf')
+  }
+
+  const prevPage = () => setPageNum(p => Math.max(1, p - 1))
+  const nextPage = () => setPageNum(p => Math.min(numPages, p + 1))
+  const zoomIn   = () => setScale(s => Math.min(+(s + 0.25).toFixed(2), 4))
+  const zoomOut  = () => setScale(s => Math.max(+(s - 0.25).toFixed(2), 0.25))
 
   return (
-    // Clicking the dark overlay (but not the white panel) closes the modal
-    <div className={styles.detailOverlay} onClick={onClose}>
-      <div className={styles.detailPanel} onClick={e => e.stopPropagation()}>
-        <div className={styles.detailHeader}>
-          <IndexBadge idx={song.idx} songType={song.song_type} subtype={song.subtype} />
-          {/* Only show key badge if this is a key variant (e.g. "in Am") */}
-          {song.key_variant && (
-            <span className={styles.keyBadge}>{song.key_variant}</span>
-          )}
-          <h2 className={styles.detailTitle}>{song.title}</h2>
-          <button className={styles.closeBtn} onClick={onClose}>✕</button>
-        </div>
+    <div className={styles.viewerPane}>
 
-        <p className={styles.detailType}>{song.song_type} / {song.subtype}</p>
+      {/* ── Header ──────────────────────────────────────────────────── */}
+      <div className={styles.viewerHeader}>
 
-        <h3 className={styles.partsHeading}>
-          Available parts ({partNames.length})
-        </h3>
-
-        {partNames.length === 0 ? (
-          <p className={styles.noParts}>No PDFs found in Drive folder.</p>
-        ) : (
-          <ul className={styles.partsList}>
-            {/* Sort alphabetically for consistent display */}
-            {partNames.sort().map(name => (
-              <li key={name} className={styles.partItem}>
-                <span className={styles.partName}>{name}</span>
-              </li>
-            ))}
-          </ul>
+        {/* Details mode: just the song identity */}
+        {viewMode === 'details' && (
+          <div className={styles.viewerTitleRow}>
+            <IndexBadge idx={song.idx} songType={song.song_type} subtype={song.subtype} />
+            {song.key_variant && <span className={styles.keyBadge}>{song.key_variant}</span>}
+            <span className={styles.viewerSongTitle}>{song.title}</span>
+          </div>
         )}
 
-        <p className={styles.detailMeta}>
-          Drive folder ID: <code className={styles.code}>{song.drive_folder_id}</code>
-        </p>
+        {/* PDF mode: back link row + controls row */}
+        {viewMode === 'pdf' && (
+          <>
+            <div className={styles.viewerTitleRow}>
+              <button className={styles.backBtn} onClick={() => setViewMode('details')}>
+                ← Details
+              </button>
+              <IndexBadge idx={song.idx} songType={song.song_type} subtype={song.subtype} />
+              {song.key_variant && <span className={styles.keyBadge}>{song.key_variant}</span>}
+              <span className={styles.viewerSongTitle}>{song.title}</span>
+            </div>
+            <div className={styles.viewerControls}>
+              {availableParts.length > 0 ? (
+                <select
+                  className={styles.partSelect}
+                  value={selectedPart ?? ''}
+                  onChange={e => setSelectedPart(e.target.value)}
+                >
+                  {availableParts.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+              ) : (
+                <span className={styles.noPartsLabel}>No parts</span>
+              )}
+              <div className={styles.ctrlSep} />
+              <button className={styles.ctrlBtn} onClick={prevPage} disabled={pageNum <= 1}>◄</button>
+              <span className={styles.pageInfo}>{numPages > 0 ? `${pageNum} / ${numPages}` : '— / —'}</span>
+              <button className={styles.ctrlBtn} onClick={nextPage} disabled={pageNum >= numPages || numPages === 0}>►</button>
+              <div className={styles.ctrlSep} />
+              <button className={styles.ctrlBtn} onClick={fitWidth} title="Fit to width" disabled={!pdfDoc}>⊞</button>
+              <button className={styles.ctrlBtn} onClick={zoomOut} disabled={scale <= 0.25}>−</button>
+              <span className={styles.zoomInfo}>{Math.round(scale * 100)}%</span>
+              <button className={styles.ctrlBtn} onClick={zoomIn} disabled={scale >= 4}>+</button>
+            </div>
+          </>
+        )}
       </div>
+
+      {/* ── Details view ────────────────────────────────────────────── */}
+      {viewMode === 'details' && (
+        <div className={styles.detailsView}>
+          <p className={styles.detailsType}>{song.song_type} · {song.subtype}</p>
+
+          <h3 className={styles.detailsHeading}>
+            Available parts <span className={styles.detailsCount}>({availableParts.length})</span>
+          </h3>
+
+          {availableParts.length === 0 ? (
+            <p className={styles.detailsEmpty}>No PDFs found in Drive folder.</p>
+          ) : (
+            <div className={styles.partsGrid}>
+              {availableParts.map(name => (
+                <button
+                  key={name}
+                  className={`${styles.partCard} ${selectedPart === name ? styles.partCardDefault : ''}`}
+                  onClick={() => openPartInPdf(name)}
+                >
+                  <span className={styles.partCardName}>{name}</span>
+                  <span className={styles.partCardArrow}>View PDF →</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {missingParts.length > 0 && (
+            <>
+              <h3 className={styles.detailsHeading}>
+                Missing <span className={styles.detailsCount}>({missingParts.length})</span>
+              </h3>
+              <div className={styles.missingParts}>
+                {missingParts.map(name => (
+                  <span key={name} className={styles.missingPart}>{name}</span>
+                ))}
+              </div>
+            </>
+          )}
+
+          <p className={styles.detailsMeta}>
+            Drive folder: <code className={styles.detailsCode}>{song.drive_folder_id}</code>
+          </p>
+        </div>
+      )}
+
+      {/* ── PDF canvas area ─────────────────────────────────────────── */}
+      {viewMode === 'pdf' && (
+        <div className={styles.canvasWrap} ref={wrapRef}>
+          {loading && (
+            <div className={styles.viewerMsg}>
+              <div className={styles.viewerSpinner} />
+              Loading…
+            </div>
+          )}
+          {!loading && error && <div className={styles.viewerError}>✗ {error}</div>}
+          {!loading && !error && availableParts.length === 0 && (
+            <div className={styles.viewerMsg}>No parts available for this song.</div>
+          )}
+          {!loading && !error && pdfDoc && (
+            <canvas ref={canvasRef} className={styles.pdfCanvas} />
+          )}
+        </div>
+      )}
+
     </div>
   )
 }
 
 // ── Repertoire (main view) ─────────────────────────────────────────────────
 export default function Repertoire() {
-  const [songs, setSongs]               = useState([])
-  const [loading, setLoading]           = useState(true)
-  const [search, setSearch]             = useState('')
-  const [typeFilter, setTypeFilter]     = useState('All')
-  const [subtypeFilter, setSubtypeFilter] = useState('All')
-  const [selectedSong, setSelectedSong] = useState(null)
+  const [songs, setSongs]                   = useState([])
+  const [loading, setLoading]               = useState(true)
+  const [search, setSearch]                 = useState('')
+  const [typeFilter, setTypeFilter]         = useState('All')
+  const [subtypeFilter, setSubtypeFilter]   = useState('All')
+  const [selectedSong, setSelectedSong]     = useState(null)
 
-  // Load all non-blacklisted, active songs from SQLite.
-  // useCallback memoises this function so it can be passed to SyncPanel
-  // without causing infinite re-renders.
   const loadSongs = useCallback(async () => {
     setLoading(true)
     try {
@@ -201,6 +355,8 @@ export default function Repertoire() {
         'SELECT * FROM songs WHERE active = 1 AND blacklisted = 0 ORDER BY idx ASC, key_variant ASC'
       )
       setSongs(rows)
+      // Auto-select first song on initial load; preserve selection on re-sync
+      if (rows.length > 0) setSelectedSong(prev => prev ?? rows[0])
     } catch (err) {
       console.error('[Repertoire] Failed to load songs:', err)
     } finally {
@@ -208,106 +364,101 @@ export default function Repertoire() {
     }
   }, [])
 
-  // Load songs once when the component mounts
   useEffect(() => { loadSongs() }, [loadSongs])
 
-  // ── Client-side filtering ──────────────────────────────────────────────
-  // All filtering happens in memory — no DB queries on each keystroke.
   const filtered = songs.filter(song => {
     const q = search.toLowerCase()
-    const matchesSearch = !search ||
-      song.title.toLowerCase().includes(q) ||
-      song.idx.includes(search) ||
-      song.id.toLowerCase().includes(q)
-    const matchesType    = typeFilter === 'All'    || song.song_type === typeFilter
-    const matchesSubtype = subtypeFilter === 'All' || song.subtype   === subtypeFilter
+    const matchesSearch   = !search || song.title.toLowerCase().includes(q) || song.idx.includes(search) || song.id.toLowerCase().includes(q)
+    const matchesType     = typeFilter    === 'All' || song.song_type === typeFilter
+    const matchesSubtype  = subtypeFilter === 'All' || song.subtype   === subtypeFilter
     return matchesSearch && matchesType && matchesSubtype
   })
 
-  // Build unique filter chip values from the loaded songs (not hardcoded)
   const types    = ['All', ...new Set(songs.map(s => s.song_type).filter(Boolean))]
   const subtypes = ['All', ...new Set(songs.map(s => s.subtype).filter(Boolean))]
 
+  // Split layout is always active once songs are loaded
+  const inSplit = songs.length > 0
+
   return (
-    <div className={styles.container}>
-      {/* Top bar: heading + sync panel */}
-      <div className={styles.header}>
-        <h2 className={styles.heading}>Repertoire</h2>
-        <SyncPanel onSyncComplete={loadSongs} />
+    <div className={inSplit ? styles.splitLayout : styles.container}>
+
+      {/* ── Left / main pane ──────────────────────────────────────── */}
+      <div className={inSplit ? styles.listPane : undefined}>
+
+        <div className={styles.header}>
+          <h2 className={styles.heading}>Repertoire</h2>
+          <SyncPanel onSyncComplete={loadSongs} />
+        </div>
+
+        <div className={styles.filterBar}>
+          <input
+            className={styles.searchInput}
+            type="text"
+            placeholder="Search by title or index…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          <div className={styles.filterChips}>
+            {types.map(t => (
+              <button
+                key={t}
+                className={`${styles.chip} ${typeFilter === t ? styles.chipActive : ''}`}
+                onClick={() => setTypeFilter(t)}
+              >{t}</button>
+            ))}
+          </div>
+          <div className={styles.filterChips}>
+            {subtypes.map(s => (
+              <button
+                key={s}
+                className={`${styles.chip} ${subtypeFilter === s ? styles.chipActive : ''}`}
+                onClick={() => setSubtypeFilter(s)}
+              >{s}</button>
+            ))}
+          </div>
+        </div>
+
+        <p className={styles.count}>
+          {loading ? 'Loading…' : songs.length === 0
+            ? 'No songs yet — click ↻ Sync Library to import from Google Drive.'
+            : `${filtered.length} of ${songs.length} songs`}
+        </p>
+
+        {!loading && filtered.length > 0 && (
+          <div className={styles.songList}>
+            {filtered.map(song => {
+              const isSelected = selectedSong?.id === song.id
+              return (
+                <div
+                  key={song.id}
+                  className={`${styles.songRow} ${isSelected ? styles.songRowSelected : ''} ${inSplit ? styles.songRowCompact : ''}`}
+                  onClick={() => setSelectedSong(song)}
+                >
+                  <IndexBadge idx={song.idx} songType={song.song_type} subtype={song.subtype} />
+                  {song.key_variant && <span className={styles.keyBadge}>{song.key_variant}</span>}
+                  <span className={styles.songTitle}>{song.title}</span>
+                  {!inSplit && <span className={styles.songMeta}>{song.song_type} / {song.subtype}</span>}
+                  {!inSplit && (
+                    <span className={styles.partCount}>
+                      {Object.keys(JSON.parse(song.parts || '{}')).length} parts
+                    </span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
 
-      {/* Search + filter chips */}
-      <div className={styles.filterBar}>
-        <input
-          className={styles.searchInput}
-          type="text"
-          placeholder="Search by title or index…"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
-        {/* Type filter chips (Arrangements / Instrumentals / Lead Sheet) */}
-        <div className={styles.filterChips}>
-          {types.map(t => (
-            <button
-              key={t}
-              className={`${styles.chip} ${typeFilter === t ? styles.chipActive : ''}`}
-              onClick={() => setTypeFilter(t)}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
-        {/* Subtype filter chips (Swing / 12 Bar / Bluesy) */}
-        <div className={styles.filterChips}>
-          {subtypes.map(s => (
-            <button
-              key={s}
-              className={`${styles.chip} ${subtypeFilter === s ? styles.chipActive : ''}`}
-              onClick={() => setSubtypeFilter(s)}
-            >
-              {s}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Result count */}
-      <p className={styles.count}>
-        {loading ? 'Loading…' : songs.length === 0
-          ? 'No songs yet — click ↻ Sync Library to import from Google Drive.'
-          : filtered.length + ' of ' + songs.length + ' songs'}
-      </p>
-
-      {/* Song rows */}
-      {!loading && filtered.length > 0 && (
-        <div className={styles.songList}>
-          {filtered.map(song => (
-            <div
-              key={song.id}
-              className={styles.songRow}
-              onClick={() => setSelectedSong(song)}
-            >
-              <IndexBadge idx={song.idx} songType={song.song_type} subtype={song.subtype} />
-              {song.key_variant && (
-                <span className={styles.keyBadge}>{song.key_variant}</span>
-              )}
-              <span className={styles.songTitle}>{song.title}</span>
-              <span className={styles.songMeta}>{song.song_type} / {song.subtype}</span>
-              <span className={styles.partCount}>
-                {Object.keys(JSON.parse(song.parts || '{}')).length} parts
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Song detail modal */}
+      {/* ── PDF viewer pane — always mounted once a song is selected ── */}
       {selectedSong && (
-        <SongDetail
+        <PdfViewer
+          key={selectedSong.id}
           song={selectedSong}
-          onClose={() => setSelectedSong(null)}
         />
       )}
+
     </div>
   )
 }

@@ -17,6 +17,7 @@ export default defineConfig({
 
   optimizeDeps: {
     // sqlite-wasm ships its own WASM; exclude from Vite pre-bundling
-    exclude: ['@sqlite.org/sqlite-wasm'],
+    // pdfjs-dist uses dynamic imports + a separate worker; exclude to avoid bundler conflicts
+    exclude: ['@sqlite.org/sqlite-wasm', 'pdfjs-dist'],
   },
 })

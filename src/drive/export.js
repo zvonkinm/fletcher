@@ -17,6 +17,7 @@
 
 import { PDFDocument } from 'pdf-lib'
 import { db } from '../db/index.js'
+import { fetchPdfBytes } from './files.js'
 
 // ── Drive helpers ──────────────────────────────────────────────────────────
 
@@ -118,15 +119,6 @@ async function copyFile(fileId, name, parentId) {
   return resp.result
 }
 
-async function fetchPdfBytes(fileId) {
-  // Download file content as ArrayBuffer using the Drive v3 media endpoint
-  const resp = await fetch(
-    `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
-    { headers: { Authorization: `Bearer ${getToken()}` } }
-  )
-  if (!resp.ok) throw new Error(`Download failed (${resp.status}) for file ${fileId}`)
-  return resp.arrayBuffer()
-}
 
 async function uploadPdf(name, pdfBytes, parentId) {
   // Multipart upload: metadata JSON + binary PDF in one request
