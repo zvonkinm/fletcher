@@ -3,7 +3,7 @@
 **Owner:** Misha Zvonkin (`zvonkinm@gmail.com`) — sole user, bandleader of The Vintage Ties  
 **Live URL:** https://zvonkinm.github.io/fletcher  
 **Repo:** https://github.com/zvonkinm/fletcher  
-**Last updated:** 2026-04-19
+**Last updated:** 2026-04-20
 
 ---
 
@@ -223,28 +223,31 @@ Progress is reported via `onProgress(msg)` and `onStageProgress(label, done, tot
 - Full-text search across song titles
 - Filter by song type (Arrangements / Instrumentals / Lead Sheet) and subtype (Swing / 12 Bar / Bluesy)
 - Colour-coded index badges per type/subtype
-- Song detail panel: shows all available parts, PDF preview via pdf.js
+- Song detail panel: shows all available parts as clickable cards; clicking a part opens the PDF viewer
 - Blacklist toggle (hides songs from setlist builder)
 - Sync progress log with warnings for changed/missing songs
 
 ### Gigs — List (`/gigs`)
 - Date-sorted card list of all gigs
-- Each card shows: name, band name, lock badge, date, time, venue, **line up chips**, set/song counts
-  - Line up chips: one pill per active part for the gig
-  - Assigned part: "Part: Musician Name" in a grey pill
-  - Unassigned active part: part name in a red pill (signals the slot still needs filling)
+- Each card shows:
+  - Name, band name, lock badge
+  - Date · Start–End time (e.g. `7:30 PM–9:00 PM`) · Venue
+  - Line up chips — one pill per active part, sorted assigned first:
+    - Assigned: **bold part name** + musician name in a grey pill
+    - Unassigned: part name in a red pill (signals the slot still needs filling)
+  - Set count · song count
 - "+ New Gig" opens creation modal
 
 ### Gigs — Creation Modal (GigForm)
-Fields: name *(required)*, band name, date *(required)*, time, venue, city, state  
+Fields: name *(required)*, band name, date *(required)*, start time, end time, venue, city, state  
 Parts selection: checkboxes for all `active_parts`; defaults to all selected  
 Copy sets: optional dropdown to copy setlist structure from an existing gig  
 Saves to DB + fires Drive sync; navigates to editor on save
 
 ### Gigs — Editor (`/gigs/:gigId`)
-**Header:** gig name, band name, date, time, venue — inline editable, auto-saved 500 ms after last change. Lock button toggles read-only mode. Export button opens export modal.
+**Header:** gig name, band name, date, start time, end time, venue — inline editable, auto-saved 400 ms after last change. Lock button toggles read-only mode. Export button opens export modal.
 
-**Parts row:** Checkboxes for `active_parts`; checked parts are active for this gig and used during export. Unchecked parts show greyed "N/A" in the Line Up.
+**Parts row:** Checkboxes for `active_parts`; checked parts are active for this gig and used during export. Unchecked parts show greyed "N/A" in the Line Up. Part chips are disabled (non-clickable) when the gig is locked.
 
 **Line Up section** (between Parts and Setlist):
 - Per-part columns laid out horizontally, scrollable
@@ -274,7 +277,7 @@ Saves to DB + fires Drive sync; navigates to editor on save
 - Warnings shown inline (songs missing a part file); export continues despite warnings
 - "Done" button appears when complete; shows error count if any
 
-**Locking:** Locked gigs are fully read-only — all inputs disabled, no drag-and-drop, no export.
+**Locking:** Locked gigs are fully read-only — all inputs disabled, part chips disabled, no drag-and-drop, no export.
 
 ### Personnel (`/personnel`)
 - Musician list sorted by name
