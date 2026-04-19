@@ -16,6 +16,22 @@ export default function NavBar({ onSignOut }) {
         {/* NavLink automatically adds an "active" class when the route matches.
             We use a function to apply our own CSS module class instead. */}
         <NavLink
+          to="/gigs"
+          className={({ isActive }) =>
+            isActive ? `${styles.link} ${styles.linkActive}` : styles.link
+          }
+        >
+          Gigs
+        </NavLink>
+        <NavLink
+          to="/personnel"
+          className={({ isActive }) =>
+            isActive ? `${styles.link} ${styles.linkActive}` : styles.link
+          }
+        >
+          Personnel
+        </NavLink>
+        <NavLink
           to="/repertoire"
           className={({ isActive }) =>
             isActive ? `${styles.link} ${styles.linkActive}` : styles.link
@@ -23,14 +39,6 @@ export default function NavBar({ onSignOut }) {
           end
         >
           Repertoire
-        </NavLink>
-        <NavLink
-          to="/gigs"
-          className={({ isActive }) =>
-            isActive ? `${styles.link} ${styles.linkActive}` : styles.link
-          }
-        >
-          Gigs
         </NavLink>
         <NavLink
           to="/settings"

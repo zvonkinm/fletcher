@@ -4,9 +4,11 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { initGsi, initGapi, triggerSignIn, signOut, isSignedIn,
          handleRedirectCallback, restoreSession } from './auth/google.js'
 import { db } from './db/index.js'
+import { loadSettingsFromDrive, loadGigsFromDrive, loadMusiciansFromDrive } from './drive/sync-gigs.js'
 import NavBar from './components/NavBar.jsx'
 import Repertoire from './views/Repertoire.jsx'
 import Gigs from './views/Gigs.jsx'
+import Personnel from './views/Personnel.jsx'
 import Settings from './views/Settings.jsx'
 import styles from './App.module.css'
 import logoUrl from './assets/logo.js'
@@ -44,6 +46,9 @@ export default function App() {
       const fromRedirect = await handleRedirectCallback()
       if (fromRedirect) {
         await initGapi()          // load Drive API client now that we have a token
+        await loadSettingsFromDrive()   // restore persisted settings (export path, etc.)
+        await loadGigsFromDrive()       // restore persisted gigs; non-fatal on failure
+        await loadMusiciansFromDrive()  // restore persisted musicians; non-fatal on failure
         setAuthState('signed-in')
         return
       }
@@ -51,6 +56,9 @@ export default function App() {
       // Case 2: valid token already in sessionStorage from this browser session
       if (restoreSession()) {
         await initGapi()
+        await loadSettingsFromDrive()   // restore persisted settings (export path, etc.)
+        await loadGigsFromDrive()       // restore persisted gigs; non-fatal on failure
+        await loadMusiciansFromDrive()  // restore persisted musicians; non-fatal on failure
         setAuthState('signed-in')
         return
       }
@@ -131,10 +139,11 @@ export default function App() {
       <NavBar onSignOut={handleSignOut} />
       <main className={styles.main}>
         <Routes>
-          {/* Default route redirects to Repertoire */}
-          <Route path="/" element={<Navigate to="/repertoire" replace />} />
+          {/* Default route redirects to Gigs */}
+          <Route path="/" element={<Navigate to="/gigs" replace />} />
           <Route path="/repertoire" element={<Repertoire />} />
           <Route path="/gigs/:gigId?" element={<Gigs />} />
+          <Route path="/personnel" element={<Personnel />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </main>

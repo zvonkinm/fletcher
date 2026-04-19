@@ -41,6 +41,16 @@ export async function applySchema(db) {
     )
   `)
 
+  // ── Musicians ──────────────────────────────────────────────────────────
+  await db.run(`
+    CREATE TABLE IF NOT EXISTS musicians (
+      id     TEXT PRIMARY KEY,
+      name   TEXT NOT NULL,
+      parts  TEXT NOT NULL DEFAULT '[]',  -- JSON: string[] of part names
+      locked INTEGER NOT NULL DEFAULT 0
+    )
+  `)
+
   // ── Indexes ────────────────────────────────────────────────────────────
   await db.run(`CREATE INDEX IF NOT EXISTS idx_songs_idx ON songs(idx)`)
   await db.run(`CREATE INDEX IF NOT EXISTS idx_songs_type ON songs(song_type, subtype)`)
@@ -89,14 +99,54 @@ export async function applySchema(db) {
   }
 
   // Migrate settings key active_seats → active_parts (one-time, safe to re-run).
-  const oldKey = await db.exec(`SELECT value FROM settings WHERE key = 'active_seats'`)
-  if (oldKey.length > 0) {
+  const oldActiveSeats = await db.exec(`SELECT value FROM settings WHERE key = 'active_seats'`)
+  if (oldActiveSeats.length > 0) {
     await db.run(
       `INSERT OR IGNORE INTO settings (key, value) VALUES ('active_parts', ?)`,
-      [oldKey[0].value]
+      [oldActiveSeats[0].value]
     )
     await db.run(`DELETE FROM settings WHERE key = 'active_seats'`)
     console.log('[db/schema] Migration: renamed settings key active_seats → active_parts')
+  }
+
+  // Gig city / state / lineup columns (added for Line Up feature).
+  if (!gigColNames.has('city')) {
+    await db.run('ALTER TABLE gigs ADD COLUMN city TEXT')
+    console.log('[db/schema] Migration: added gigs.city')
+  }
+  if (!gigColNames.has('state')) {
+    await db.run('ALTER TABLE gigs ADD COLUMN state TEXT')
+    console.log('[db/schema] Migration: added gigs.state')
+  }
+  if (!gigColNames.has('lineup')) {
+    await db.run('ALTER TABLE gigs ADD COLUMN lineup TEXT')
+    console.log('[db/schema] Migration: added gigs.lineup')
+  }
+
+  // Musician city / state columns (added for Line Up feature).
+  const musicianCols     = await db.exec('PRAGMA table_info(musicians)')
+  const musicianColNames = new Set(musicianCols.map(c => c.name))
+  if (!musicianColNames.has('city')) {
+    await db.run('ALTER TABLE musicians ADD COLUMN city TEXT')
+    console.log('[db/schema] Migration: added musicians.city')
+  }
+  if (!musicianColNames.has('state')) {
+    await db.run('ALTER TABLE musicians ADD COLUMN state TEXT')
+    console.log('[db/schema] Migration: added musicians.state')
+  }
+
+  // Migrate export_folder_name and master_folder_name → root_drive_folder.
+  // Both pointed at the same top-level Drive folder; collapse into one key.
+  for (const oldKey of ['export_folder_name', 'master_folder_name']) {
+    const oldRow = await db.exec(`SELECT value FROM settings WHERE key = ?`, [oldKey])
+    if (oldRow.length > 0) {
+      await db.run(
+        `INSERT OR IGNORE INTO settings (key, value) VALUES ('root_drive_folder', ?)`,
+        [oldRow[0].value]
+      )
+      await db.run(`DELETE FROM settings WHERE key = ?`, [oldKey])
+      console.log(`[db/schema] Migration: renamed settings key ${oldKey} → root_drive_folder`)
+    }
   }
 
   console.log('[db/schema] Schema applied')

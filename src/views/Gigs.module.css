@@ -239,7 +239,7 @@ select.formInput {
 /* ── GigEditor layout ─────────────────────────────────────────────────────── */
 
 /* Full-height column layout.
-   56px = NavBar, 48px = main padding (24px top + 24px bottom). */
+   56px = NavBar height, 48px = main padding (24px top + 24px bottom). */
 .editorWrap {
   display: flex;
   flex-direction: column;
@@ -840,27 +840,7 @@ select.formInput {
   white-space: nowrap;
 }
 
-/* ── Header Row 3: part chips + export button ────────────────────────────── */
-
-.headerRow3 {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 8px 0 4px;
-  border-top: 1px solid #EFF2F7;
-  margin-top: 8px;
-}
-
-.partsLabel {
-  font-size: 12px;
-  font-weight: 700;
-  color: #4A5568;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  flex-shrink: 0;
-  margin-right: 4px;
-}
+/* ── Part chips (used in both the lineup section and the GigForm) ─────────── */
 
 /* Part chip — a checkbox styled as a pill toggle */
 .partChip {
@@ -1026,4 +1006,204 @@ select.formInput {
   background: #C9A84C;
   border-radius: 4px;
   transition: width 0.25s ease;
+}
+
+/* ── GigForm parts chips row ─────────────────────────────────────────────── */
+
+/* Wraps the part checkboxes in the new-gig form */
+.formPartsRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+/* ── Line Up section ─────────────────────────────────────────────────────── */
+/* Sits between the gig-info header and the setlist editor.                  */
+
+.lineupSection {
+  flex-shrink: 0;
+  padding: 8px 0 10px;
+  border-bottom: 1px solid #D0D9E8;
+  font-family: Arial, sans-serif;
+}
+
+.lineupSectionHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.lineupSectionTitle {
+  font-size: 12px;
+  font-weight: 700;
+  color: #4A5568;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.lineupLocalToggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: #4A5568;
+  cursor: pointer;
+  user-select: none;
+}
+.lineupLocalToggle input[type="checkbox"] {
+  cursor: pointer;
+  accent-color: #1B2B4B;
+}
+
+/* Horizontal row of per-part columns */
+.lineupColumns {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+/* One column: part chip on top, picker below */
+.lineupCol {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 130px;
+  flex-shrink: 0;
+}
+
+/* Grey placeholder for inactive parts */
+.lineupNA {
+  text-align: center;
+  font-size: 12px;
+  color: #C0CBD8;
+  padding: 5px 8px;
+  border: 1px dashed #D0D9E8;
+  border-radius: 6px;
+  background: #F7F9FC;
+  font-family: Arial, sans-serif;
+}
+
+/* ── MusicianPicker ──────────────────────────────────────────────────────── */
+
+.pickerWrap {
+  position: relative;
+}
+
+/* Closed-state trigger button */
+.pickerBtn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 5px 8px;
+  border: 1px solid #D0D9E8;
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: Arial, sans-serif;
+  color: #718096;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.12s;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.pickerBtn:hover:not(:disabled) { border-color: #1B2B4B; }
+.pickerBtn:disabled { background: #F7F9FC; cursor: default; }
+
+/* When a musician is assigned the text goes navy */
+.pickerBtnAssigned { color: #1B2B4B; font-weight: 600; }
+
+.pickerBtnLabel {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pickerCaret { color: #A0AEC0; font-size: 9px; flex-shrink: 0; }
+
+/* Floating dropdown panel — position/size set inline via JS (position:fixed)
+   so the panel escapes any overflow:auto ancestor (e.g. lineupColumns). */
+.pickerPanel {
+  max-height: 224px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #D0D9E8;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(27,43,75,0.15);
+  z-index: 200;
+  padding: 4px 0;
+}
+
+/* One row in the panel */
+.pickerOption {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px 5px 10px;
+  transition: background 0.1s;
+}
+.pickerOption:hover { background: #F7F9FC; }
+
+/* Highlighted row for the currently assigned musician */
+.pickerOptionSelected { background: #EFF2F7; }
+
+/* Declined musician row — name gets strikethrough */
+.pickerOptionDeclined .pickerOptionName {
+  text-decoration: line-through;
+  color: #A0AEC0;
+}
+
+/* Left side: name + optional location sub-line */
+.pickerOptionInfo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.pickerOptionName {
+  font-size: 13px;
+  color: #1B2B4B;
+  font-family: Arial, sans-serif;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* City/State shown in show-all mode */
+.pickerOptionLocation {
+  font-size: 11px;
+  color: #A0AEC0;
+  font-family: Arial, sans-serif;
+}
+
+/* ✕ unavailability toggle button */
+.pickerDeclineBtn {
+  flex-shrink: 0;
+  background: none;
+  border: 1px solid #D0D9E8;
+  border-radius: 4px;
+  width: 20px;
+  height: 20px;
+  font-size: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #C0CBD8;
+  transition: border-color 0.12s, color 0.12s, background 0.12s;
+}
+.pickerDeclineBtn:hover { border-color: #C0392B; color: #C0392B; }
+
+/* Active (declined) state — red fill */
+.pickerDeclineBtnActive {
+  background: #FEF2F2;
+  border-color: #C0392B;
+  color: #C0392B;
 }

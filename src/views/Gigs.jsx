@@ -7,7 +7,7 @@
 //
 // A gig contains N named sets. Each set is an ordered list of songs.
 // A song may not appear more than once across all sets of the same gig.
-import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   DndContext,
@@ -28,6 +28,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { db } from '../db/index.js'
 import { exportGig } from '../drive/export.js'
+import { saveGigsToDrive } from '../drive/sync-gigs.js'
 import { tokenExpiresIn, refreshAccessToken } from '../auth/google.js'
 import styles from './Gigs.module.css'
 
@@ -85,6 +86,40 @@ function formatDate(iso) {
   return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', {
     day: 'numeric', month: 'short', year: 'numeric',
   })
+}
+
+// ── Lineup helpers ──────────────────────────────────────────────────────────
+
+// Parses the raw `gigs.lineup` JSON into a working state object keyed by part.
+// Ensures every part in `parts` has an entry; unknown parts in raw data are dropped.
+// Shape: { [partName]: { assigned: musicianId | null, declined: musicianId[] } }
+function parseLineup(raw, parts) {
+  const base = {}
+  for (const p of parts) base[p] = { assigned: null, declined: [] }
+  if (!raw) return base
+  try {
+    const parsed = JSON.parse(raw)
+    for (const p of parts) {
+      if (parsed[p]) {
+        base[p] = {
+          assigned: parsed[p].assigned ?? null,
+          declined: Array.isArray(parsed[p].declined) ? parsed[p].declined : [],
+        }
+      }
+    }
+  } catch {}
+  return base
+}
+
+// A musician is "local" to a gig if:
+//   • They have no city or state set at all (unknown location = show by default)
+//   • OR their state matches the gig's state (when the gig has a state)
+//     AND their city matches the gig's city (when the gig has a city)
+function isLocalMusician(musician, gigCity, gigState) {
+  if (!musician.city && !musician.state) return true   // unknown = local
+  if (gigState && musician.state !== gigState) return false
+  if (gigCity  && musician.city  !== gigCity)  return false
+  return true
 }
 
 // ── Sets serialisation ──────────────────────────────────────────────────────
@@ -256,10 +291,32 @@ function GigForm({ existingGigs, onSave, onCancel }) {
   const [date, setDate]         = useState('')
   const [time, setTime]         = useState('')
   const [venue, setVenue]       = useState('')
+  const [city, setCity]         = useState('')
+  const [gigState, setGigState] = useState('')
   // gigId of an existing gig to copy sets from (empty string = start fresh)
   const [copyFrom, setCopyFrom] = useState('')
+  // active_parts loaded from settings; formParts is the user's selection for this gig
+  const [activeParts, setActiveParts] = useState([])
+  const [formParts, setFormParts]     = useState([])
   const [saving, setSaving]     = useState(false)
   const [error, setError]       = useState(null)
+
+  // Load active_parts from settings on mount; default all selected.
+  useEffect(() => {
+    db.exec(`SELECT value FROM settings WHERE key = 'active_parts'`)
+      .then(rows => {
+        const ap = rows.length > 0 ? JSON.parse(rows[0].value) : []
+        setActiveParts(ap)
+        setFormParts(ap)
+      })
+      .catch(console.error)
+  }, [])
+
+  function toggleFormPart(part) {
+    setFormParts(prev =>
+      prev.includes(part) ? prev.filter(p => p !== part) : [...prev, part]
+    )
+  }
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -294,18 +351,22 @@ function GigForm({ existingGigs, onSave, onCancel }) {
       }
 
       await db.run(
-        `INSERT INTO gigs (id, name, band_name, date, time, venue, setlist, print_sublists)
-         VALUES (?, ?, ?, ?, ?, ?, ?, '[]')`,
+        `INSERT INTO gigs (id, name, band_name, date, time, venue, city, state, setlist, print_sublists, parts)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?)`,
         [
           gigId,
           gigName.trim(),
-          bandName.trim() || null,
+          bandName.trim()  || null,
           date,
-          time.trim()  || null,
-          venue.trim() || null,
+          time.trim()      || null,
+          venue.trim()     || null,
+          city.trim()      || null,
+          gigState.trim()  || null,
           initialSetsJson,
+          JSON.stringify(formParts),
         ]
       )
+      saveGigsToDrive()  // fire-and-forget Drive sync
       onSave(gigId)
     } catch (err) {
       console.error('[Gigs] Failed to create gig:', err)
@@ -374,9 +435,54 @@ function GigForm({ existingGigs, onSave, onCancel }) {
               className={styles.formInput}
               value={venue}
               onChange={e => setVenue(e.target.value)}
-              placeholder="e.g. The Highball, Austin TX"
+              placeholder="e.g. The Highball"
             />
           </label>
+
+          {/* City and state sit side-by-side */}
+          <div className={styles.formRow}>
+            <label className={styles.formLabel} style={{ flex: 1 }}>
+              City
+              <input
+                className={styles.formInput}
+                value={city}
+                onChange={e => setCity(e.target.value)}
+                placeholder="e.g. Austin"
+              />
+            </label>
+            <label className={styles.formLabel} style={{ flex: '0 0 90px' }}>
+              State
+              <input
+                className={styles.formInput}
+                value={gigState}
+                onChange={e => setGigState(e.target.value)}
+                placeholder="e.g. TX"
+              />
+            </label>
+          </div>
+
+          {/* Active parts for this gig — default all checked */}
+          {activeParts.length > 0 && (
+            <div className={styles.formLabel}>
+              Active parts
+              <div className={styles.formPartsRow}>
+                {activeParts.map(part => (
+                  <label
+                    key={part}
+                    className={`${styles.partChip} ${formParts.includes(part) ? styles.partChipActive : ''}`}
+                  >
+                    <input
+                      type="checkbox"
+                      className={styles.partCheckbox}
+                      checked={formParts.includes(part)}
+                      onChange={() => toggleFormPart(part)}
+                    />
+                    {part}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Copy-from dropdown: only shown when there are existing gigs */}
           {existingGigs.length > 0 && (
@@ -646,6 +752,156 @@ function SetColumn({ set, songMap, isSongDragging, isLocked, onRename, onRemoveE
   )
 }
 
+// ── MusicianPicker ────────────────────────────────────────────────────────────
+// Custom dropdown for assigning a musician to a part.
+// Opens a floating panel; each row shows the musician's name and a ✕ button
+// to mark them unavailable (declined).  Clicking the name assigns/unassigns.
+//
+// Panel order: assigned musician first, then declined (alphabetically),
+// then the rest (alphabetically) — matching the user's preferred sort.
+function MusicianPicker({ partLineup, eligible, showOnlyLocal, assignedMusician, onChange, isLocked }) {
+  const [open, setOpen]       = useState(false)
+  const [panelPos, setPanelPos] = useState({ top: 0, left: 0, width: 180 })
+  const wrapRef = useRef(null)
+  const btnRef  = useRef(null)
+
+  // On open: compute fixed position from the trigger button's bounding rect.
+  // Using position:fixed escapes any overflow:auto ancestor (e.g. lineupColumns).
+  // If the panel would go off the bottom of the viewport, flip it upward.
+  useEffect(() => {
+    if (!open) return
+    if (btnRef.current) {
+      const r      = btnRef.current.getBoundingClientRect()
+      const panelH = 224  // matches max-height in CSS
+      const below  = r.bottom + 4 + panelH <= window.innerHeight
+      setPanelPos({
+        top:   below ? r.bottom + 4 : r.top - panelH - 4,
+        left:  r.left,
+        width: Math.max(r.width, 180),
+      })
+    }
+    function onDown(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [open])
+
+  const declinedSet = new Set(partLineup.declined)
+
+  // Sort: assigned → declined (alpha) → rest (alpha)
+  const sorted = [...eligible].sort((a, b) => {
+    const aAsgn = a.id === partLineup.assigned
+    const bAsgn = b.id === partLineup.assigned
+    if (aAsgn !== bAsgn) return aAsgn ? -1 : 1
+    const aDec = declinedSet.has(a.id)
+    const bDec = declinedSet.has(b.id)
+    if (aDec !== bDec) return aDec ? -1 : 1
+    return a.name.localeCompare(b.name)
+  })
+
+  function handleSelect(musicianId) {
+    const next = musicianId === partLineup.assigned ? null : musicianId
+    onChange({ ...partLineup, assigned: next })
+    if (next !== null) setOpen(false)
+  }
+
+  function handleToggleDecline(e, musicianId) {
+    e.stopPropagation()
+    const isDeclined = declinedSet.has(musicianId)
+    const newDeclined = isDeclined
+      ? partLineup.declined.filter(id => id !== musicianId)
+      : [...partLineup.declined, musicianId]
+    // Declining the currently assigned musician also unassigns them
+    const newAssigned = (!isDeclined && musicianId === partLineup.assigned)
+      ? null
+      : partLineup.assigned
+    onChange({ assigned: newAssigned, declined: newDeclined })
+  }
+
+  return (
+    <div className={styles.pickerWrap} ref={wrapRef}>
+
+      {/* ── Trigger button ────────────────────────────── */}
+      <button
+        ref={btnRef}
+        className={`${styles.pickerBtn} ${assignedMusician ? styles.pickerBtnAssigned : ''}`}
+        onClick={() => { if (!isLocked) setOpen(v => !v) }}
+        disabled={isLocked}
+      >
+        <span className={styles.pickerBtnLabel}>
+          {assignedMusician ? assignedMusician.name : '—'}
+        </span>
+        {!isLocked && <span className={styles.pickerCaret}>▾</span>}
+      </button>
+
+      {/* ── Dropdown panel ────────────────────────────── */}
+      {open && (
+        <div
+          className={styles.pickerPanel}
+          style={{ position: 'fixed', top: panelPos.top, left: panelPos.left, width: panelPos.width }}
+        >
+
+          {/* "Not assigned" option */}
+          <div
+            className={`${styles.pickerOption} ${!partLineup.assigned ? styles.pickerOptionSelected : ''}`}
+            onClick={() => { onChange({ ...partLineup, assigned: null }); setOpen(false) }}
+          >
+            <span className={styles.pickerOptionName} style={{ color: '#A0AEC0', fontStyle: 'italic' }}>
+              not assigned
+            </span>
+          </div>
+
+          {sorted.length === 0 && (
+            <div className={styles.pickerOption}>
+              <span className={styles.pickerOptionName} style={{ color: '#A0AEC0', fontStyle: 'italic' }}>
+                No musicians for this part
+              </span>
+            </div>
+          )}
+
+          {sorted.map(m => {
+            const isAssigned = m.id === partLineup.assigned
+            const isDeclined = declinedSet.has(m.id)
+            return (
+              <div
+                key={m.id}
+                className={[
+                  styles.pickerOption,
+                  isAssigned ? styles.pickerOptionSelected : '',
+                  isDeclined ? styles.pickerOptionDeclined : '',
+                ].filter(Boolean).join(' ')}
+              >
+                {/* Name (+ location in show-all mode) — click to assign */}
+                <div
+                  className={styles.pickerOptionInfo}
+                  onClick={() => !isDeclined && handleSelect(m.id)}
+                  style={isDeclined ? { cursor: 'default' } : undefined}
+                >
+                  <span className={styles.pickerOptionName}>{m.name}</span>
+                  {!showOnlyLocal && (m.city || m.state) && (
+                    <span className={styles.pickerOptionLocation}>
+                      {[m.city, m.state].filter(Boolean).join(', ')}
+                    </span>
+                  )}
+                </div>
+                {/* ✕ unavailability toggle */}
+                <button
+                  className={`${styles.pickerDeclineBtn} ${isDeclined ? styles.pickerDeclineBtnActive : ''}`}
+                  onClick={e => handleToggleDecline(e, m.id)}
+                  title={isDeclined ? 'Remove unavailability mark' : 'Mark as unavailable'}
+                >
+                  ✕
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── GigEditor ────────────────────────────────────────────────────────────────
 // The full setlist editor for one gig.
 // Left panel:   searchable repertoire, each song draggable
@@ -661,7 +917,7 @@ function GigEditor({ gigId }) {
   const [songMap, setSongMap]       = useState(new Map())
   const [search, setSearch]         = useState('')
   const [meta, setMeta]             = useState({
-    name: '', band_name: '', date: '', time: '', venue: '',
+    name: '', band_name: '', date: '', time: '', venue: '', city: '', state: '',
   })
   const [saveStatus, setSaveStatus] = useState('saved')  // 'saved'|'saving'|'error'
   const [activeDrag, setActiveDrag] = useState(null)     // for DragOverlay
@@ -671,6 +927,12 @@ function GigEditor({ gigId }) {
   // parts: which instruments are active for this gig (persisted to gigs.parts)
   const [parts, setParts]               = useState([])
   const [activePartsDef, setActivePartsDef] = useState([])  // from settings.active_parts
+  // musicians: all musician rows loaded from DB (used by LineupSection)
+  const [musicians, setMusicians]       = useState([])
+  // lineup: { [partName]: { assigned: id|null, declined: id[] } }
+  const [lineup, setLineup]             = useState({})
+  // showOnlyLocal: filters lineup dropdowns to musicians matching the gig's city/state
+  const [showOnlyLocal, setShowOnlyLocal] = useState(true)
   // export panel state
   const [exportOpen, setExportOpen]     = useState(false)
   const [exportLog, setExportLog]       = useState([])
@@ -681,9 +943,13 @@ function GigEditor({ gigId }) {
   const [repoVisible, setRepoVisible]   = useState(true)
 
   // loadedRef prevents auto-save effects from firing during the initial load
-  const loadedRef   = useRef(false)
-  const setsSaveRef = useRef(null)
-  const metaSaveRef = useRef(null)
+  const loadedRef      = useRef(false)
+  const setsSaveRef    = useRef(null)
+  const metaSaveRef    = useRef(null)
+  const lineupSaveRef  = useRef(null)
+  // latestLineupRef holds the current lineup object so the debounced save
+  // always writes the most recent value regardless of closure timing.
+  const latestLineupRef = useRef({})
 
   // ── Load gig + songs ─────────────────────────────────────────────────
   useEffect(() => {
@@ -701,6 +967,8 @@ function GigEditor({ gigId }) {
           date:      row.date      ?? '',
           time:      row.time      ?? '',
           venue:     row.venue     ?? '',
+          city:      row.city      ?? '',
+          state:     row.state     ?? '',
         })
         // locked is stored as INTEGER 0/1; treat any non-zero value as locked
         setIsLocked(row.locked !== 0)
@@ -710,7 +978,19 @@ function GigEditor({ gigId }) {
         const partRows = await db.exec(`SELECT value FROM settings WHERE key = 'active_parts'`)
         const defaultParts = partRows.length > 0 ? JSON.parse(partRows[0].value) : []
         setActivePartsDef(defaultParts)
-        setParts(row.parts ? JSON.parse(row.parts) : defaultParts)
+        const gigParts = row.parts ? JSON.parse(row.parts) : defaultParts
+        setParts(gigParts)
+
+        // Initialise lineup state from stored JSON; default missing parts to empty.
+        const initialLineup = parseLineup(row.lineup, gigParts)
+        setLineup(initialLineup)
+        latestLineupRef.current = initialLineup
+
+        // Load all musicians (needed by LineupSection)
+        const musRows = await db.exec(
+          'SELECT id, name, parts, city, state FROM musicians ORDER BY name ASC'
+        )
+        setMusicians(musRows)
 
         // Load the full repertoire for the left panel
         const allSongs = await db.exec(
@@ -742,6 +1022,7 @@ function GigEditor({ gigId }) {
           [JSON.stringify(setsToStorage(sets)), gigId]
         )
         setSaveStatus('saved')
+        saveGigsToDrive()  // fire-and-forget Drive sync
       } catch (err) {
         console.error('[Gigs] Sets save failed:', err)
         setSaveStatus('error')
@@ -758,22 +1039,25 @@ function GigEditor({ gigId }) {
     metaSaveRef.current = setTimeout(async () => {
       try {
         await db.run(
-          'UPDATE gigs SET name=?, band_name=?, date=?, time=?, venue=? WHERE id=?',
+          'UPDATE gigs SET name=?, band_name=?, date=?, time=?, venue=?, city=?, state=? WHERE id=?',
           [
             meta.name      || '(untitled)',
             meta.band_name || null,
             meta.date      || null,
             meta.time      || null,
             meta.venue     || null,
+            meta.city      || null,
+            meta.state     || null,
             gigId,
           ]
         )
+        saveGigsToDrive()  // fire-and-forget Drive sync
       } catch (err) {
         console.error('[Gigs] Meta save failed:', err)
       }
     }, 400)
     return () => clearTimeout(metaSaveRef.current)
-  }, [meta.name, meta.band_name, meta.date, meta.time, meta.venue, gigId])
+  }, [meta.name, meta.band_name, meta.date, meta.time, meta.venue, meta.city, meta.state, gigId])
 
   // ── Derived: all song IDs currently in any set ────────────────────────
   // Used to enforce the no-duplicate rule and to mark used songs in the
@@ -790,6 +1074,7 @@ function GigEditor({ gigId }) {
     setIsLocked(next)
     try {
       await db.run('UPDATE gigs SET locked = ? WHERE id = ?', [next ? 1 : 0, gigId])
+      saveGigsToDrive()  // fire-and-forget Drive sync
     } catch (err) {
       console.error('[Gigs] Lock save failed:', err)
       setIsLocked(isLocked)  // revert on error
@@ -950,6 +1235,7 @@ function GigEditor({ gigId }) {
   async function handleDelete() {
     try {
       await db.run('DELETE FROM gigs WHERE id = ?', [gigId])
+      saveGigsToDrive()  // fire-and-forget Drive sync
       navigate('/gigs')
     } catch (err) {
       console.error('[Gigs] Delete failed:', err)
@@ -957,18 +1243,58 @@ function GigEditor({ gigId }) {
   }
 
   // ── Part management ───────────────────────────────────────────────────
-  // Toggles one part on/off and persists the change immediately.
+  // Toggles one part on/off, persists immediately, and rebases the lineup
+  // so that every active part has an entry (new parts get empty defaults;
+  // removed parts are dropped).
   async function togglePart(part) {
     const next = parts.includes(part)
       ? parts.filter(p => p !== part)
       : [...parts, part]
     setParts(next)
+    // Rebase lineup to match the new parts list
+    setLineup(prev => {
+      const rebased = {}
+      for (const p of next) rebased[p] = prev[p] ?? { assigned: null, declined: [] }
+      latestLineupRef.current = rebased
+      return rebased
+    })
     try {
       await db.run('UPDATE gigs SET parts = ? WHERE id = ?', [JSON.stringify(next), gigId])
+      // Save rebased lineup (debounced so rapid toggles don't spam)
+      clearTimeout(lineupSaveRef.current)
+      lineupSaveRef.current = setTimeout(async () => {
+        try {
+          await db.run('UPDATE gigs SET lineup = ? WHERE id = ?',
+            [JSON.stringify(latestLineupRef.current), gigId])
+        } catch (e) {
+          console.error('[Gigs] Lineup rebase save failed:', e)
+        }
+      }, 300)
+      saveGigsToDrive()  // fire-and-forget Drive sync
     } catch (err) {
       console.error('[Gigs] Part save failed:', err)
       setParts(parts)  // revert on error
     }
+  }
+
+  // ── Lineup management ─────────────────────────────────────────────────
+  // Called by LineupSection when assigned or declined changes for one part.
+  function handleLineupChange(part, newPartLineup) {
+    setLineup(prev => {
+      const next = { ...prev, [part]: newPartLineup }
+      latestLineupRef.current = next
+      return next
+    })
+    clearTimeout(lineupSaveRef.current)
+    lineupSaveRef.current = setTimeout(async () => {
+      try {
+        await db.run('UPDATE gigs SET lineup = ? WHERE id = ?',
+          [JSON.stringify(latestLineupRef.current), gigId])
+        saveGigsToDrive()  // fire-and-forget Drive sync
+      } catch (err) {
+        console.error('[Gigs] Lineup save failed:', err)
+      }
+    }, 300)
   }
 
   // ── Export ────────────────────────────────────────────────────────────
@@ -1120,35 +1446,105 @@ function GigEditor({ gigId }) {
             placeholder="Venue"
             readOnly={isLocked}
           />
+          <input
+            className={styles.metaInput}
+            value={meta.city}
+            onChange={e => setMeta(m => ({ ...m, city: e.target.value }))}
+            placeholder="City"
+            readOnly={isLocked}
+            style={{ width: 110 }}
+          />
+          <input
+            className={styles.metaInput}
+            value={meta.state}
+            onChange={e => setMeta(m => ({ ...m, state: e.target.value }))}
+            placeholder="State"
+            readOnly={isLocked}
+            style={{ width: 60 }}
+          />
         </div>
 
-        {/* ── Row 3: per-gig part checkboxes + Export button ───────────── */}
-        <div className={styles.headerRow3}>
-          <span className={styles.partsLabel}>Parts:</span>
-          {activePartsDef.map(part => (
-            <label
-              key={part}
-              className={`${styles.partChip} ${parts.includes(part) ? styles.partChipActive : ''}`}
-            >
+      </div>
+
+      {/* ── Line Up ──────────────────────────────────────────────────── */}
+      {/* Shows all active_parts as columns. Active parts get a musician  */}
+      {/* picker; inactive parts show a greyed N/A placeholder.           */}
+      {activePartsDef.length > 0 && (
+        <div className={styles.lineupSection}>
+
+          {/* Header: title + local toggle + Export button */}
+          <div className={styles.lineupSectionHeader}>
+            <span className={styles.lineupSectionTitle}>Line Up</span>
+            <label className={styles.lineupLocalToggle}>
               <input
                 type="checkbox"
-                className={styles.partCheckbox}
-                checked={parts.includes(part)}
-                onChange={() => togglePart(part)}
+                checked={showOnlyLocal}
+                onChange={e => setShowOnlyLocal(e.target.checked)}
               />
-              {part}
+              Show only local
             </label>
-          ))}
-          <button
-            className={styles.exportBtn}
-            onClick={startExport}
-            disabled={parts.length === 0}
-            title={parts.length === 0 ? 'Select at least one part to export' : 'Export gig to Google Drive'}
-          >
-            Export to Drive
-          </button>
+            <button
+              className={styles.exportBtn}
+              onClick={startExport}
+              disabled={parts.length === 0}
+              title={parts.length === 0 ? 'Select at least one part to export' : 'Export gig to Google Drive'}
+            >
+              Export to Drive
+            </button>
+          </div>
+
+          {/* One column per part */}
+          <div className={styles.lineupColumns}>
+            {activePartsDef.map(part => {
+              const isActive    = parts.includes(part)
+              const partLineup  = lineup[part] ?? { assigned: null, declined: [] }
+              const declinedSet = new Set(partLineup.declined)
+
+              // All musicians who play this part
+              const eligibleAll = musicians.filter(m =>
+                JSON.parse(m.parts || '[]').includes(part)
+              )
+              // In local-only mode, show local musicians + any already declined
+              // (so declined non-locals can be un-declined)
+              const eligibleVisible = showOnlyLocal
+                ? eligibleAll.filter(m =>
+                    isLocalMusician(m, meta.city, meta.state) || declinedSet.has(m.id)
+                  )
+                : eligibleAll
+
+              const assignedMusician = eligibleAll.find(m => m.id === partLineup.assigned) ?? null
+
+              return (
+                <div key={part} className={styles.lineupCol}>
+                  {/* Part toggle chip */}
+                  <label className={`${styles.partChip} ${isActive ? styles.partChipActive : ''}`}>
+                    <input
+                      type="checkbox"
+                      className={styles.partCheckbox}
+                      checked={isActive}
+                      onChange={() => togglePart(part)}
+                    />
+                    {part}
+                  </label>
+                  {/* Musician picker or N/A */}
+                  {isActive ? (
+                    <MusicianPicker
+                      partLineup={partLineup}
+                      eligible={eligibleVisible}
+                      showOnlyLocal={showOnlyLocal}
+                      assignedMusician={assignedMusician}
+                      onChange={newPL => handleLineupChange(part, newPL)}
+                      isLocked={isLocked}
+                    />
+                  ) : (
+                    <div className={styles.lineupNA}>N/A</div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ── Export progress modal ────────────────────────────────────── */}
       {exportOpen && (
@@ -1315,6 +1711,7 @@ function GigEditor({ gigId }) {
           ) : null}
         </DragOverlay>
       </DndContext>
+
     </div>
   )
 }

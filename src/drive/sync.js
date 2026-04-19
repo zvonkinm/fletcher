@@ -15,6 +15,7 @@
 //   5. Mark folders no longer in Drive as inactive (soft delete)
 
 import { db } from '../db/index.js'
+import { saveSettingsToDrive } from './sync-gigs.js'
 
 // ── Folder name parser ─────────────────────────────────────────────────────
 // Matches: "1014 There ain't no sweet man"
@@ -127,8 +128,8 @@ export async function syncLibrary(onProgress = () => {}) {
   _typeMap = null
   _blacklist = null
 
-  // 1. Find master folder
-  const rows = await db.exec(`SELECT value FROM settings WHERE key = 'master_folder_name'`)
+  // 1. Find root Drive folder
+  const rows = await db.exec(`SELECT value FROM settings WHERE key = 'root_drive_folder'`)
   const masterFolderName = rows.length ? JSON.parse(rows[0].value) : 'The Vintage Ties 2021'
 
   onProgress(`Finding "${masterFolderName}" in Google Drive…`, 0, 0)
@@ -227,6 +228,7 @@ export async function syncLibrary(onProgress = () => {}) {
     `INSERT OR REPLACE INTO settings (key, value) VALUES ('last_synced', ?)`,
     [JSON.stringify(Date.now())]
   )
+  saveSettingsToDrive()  // fire-and-forget — persists last_synced to Drive
 
   onProgress('Sync complete.', subfolders.length, subfolders.length)
   return stats

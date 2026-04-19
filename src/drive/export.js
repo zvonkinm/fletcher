@@ -226,14 +226,14 @@ export async function exportGig({ gig, onProgress = () => {}, onStageProgress = 
 
   // ── Load settings ──────────────────────────────────────────────────────
   const settingRows = await db.exec(
-    `SELECT key, value FROM settings WHERE key IN ('part_definitions','export_folder_name','active_parts')`
+    `SELECT key, value FROM settings WHERE key IN ('part_definitions','root_drive_folder','active_parts')`
   )
   const settings = Object.fromEntries(settingRows.map(r => [r.key, JSON.parse(r.value)]))
-  const partDefs         = settings.part_definitions  || {}
-  const exportFolderName = settings.export_folder_name || ''
-  const activePartsDef   = settings.active_parts       || []
+  const partDefs         = settings.part_definitions || {}
+  const rootDriveFolder  = settings.root_drive_folder || ''
+  const activePartsDef   = settings.active_parts      || []
 
-  if (!exportFolderName) throw new Error('Export folder not configured — set it in Settings.')
+  if (!rootDriveFolder) throw new Error('Root Drive folder not configured — set it in Settings.')
 
   // Parts for this gig (fall back to active_parts if not set)
   const parts = gig.parts ? JSON.parse(gig.parts) : activePartsDef
@@ -283,16 +283,16 @@ export async function exportGig({ gig, onProgress = () => {}, onStageProgress = 
   // export_folder_name may be a slash-separated path, e.g. "Band/Year/Shows".
   // Walk each segment: the first must already exist (no implicit root creation),
   // subsequent segments are created if missing.
-  const pathSegments = exportFolderName.split('/').map(s => s.trim()).filter(Boolean)
-  if (pathSegments.length === 0) throw new Error('Export folder not configured — set it in Settings.')
+  const pathSegments = rootDriveFolder.split('/').map(s => s.trim()).filter(Boolean)
+  if (pathSegments.length === 0) throw new Error('Root Drive folder not configured — set it in Settings.')
 
-  onProgress(`\nLocating export folder "${exportFolderName}"…`)
+  onProgress(`\nLocating root Drive folder "${rootDriveFolder}"…`)
   // Stage: setting up the folder tree — one tick per folder resolved
   beginStage('Setting up folders', pathSegments.length + 2)  // +2: Setlists + gig folder
 
   // First segment must exist at the Drive root
   let currentFolder = await findFolder(pathSegments[0], null)
-  if (!currentFolder) throw new Error(`Export folder "${pathSegments[0]}" not found in Drive.`)
+  if (!currentFolder) throw new Error(`Root Drive folder "${pathSegments[0]}" not found in Drive.`)
   onProgress(`  Found: ${pathSegments[0]}`)
   stageTick()
 

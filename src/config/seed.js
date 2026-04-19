@@ -82,12 +82,12 @@ const ACTIVE_PARTS = [
   'Trumpet',
 ]
 
-const MASTER_FOLDER_NAME = 'The Vintage Ties 2021'
-
-// Top-level Drive folder where exported setlists are written.
-// Structure: <EXPORT_FOLDER>/Setlists/<gig name>/<part>/
+// Top-level Drive folder — root for all exports and sync files.
+// Structure: <ROOT_DRIVE_FOLDER>/Setlists/<gig name>/<part>/
+//            <ROOT_DRIVE_FOLDER>/Fletcher Sync/gigs.info
+//            <ROOT_DRIVE_FOLDER>/Fletcher Sync/settings.info
 // Configurable in Settings.
-const EXPORT_FOLDER_NAME = 'The Vintage Ties 2021'
+const ROOT_DRIVE_FOLDER = 'The Vintage Ties 2021'
 
 // ── Historical gigs ────────────────────────────────────────────────────────
 
@@ -162,8 +162,7 @@ export async function seedIfEmpty(db) {
       ['part_definitions', JSON.stringify(PART_DEFINITIONS)],
       ['blacklist', JSON.stringify(BLACKLIST)],
       ['active_parts', JSON.stringify(ACTIVE_PARTS)],
-      ['master_folder_name', JSON.stringify(MASTER_FOLDER_NAME)],
-      ['export_folder_name', JSON.stringify(EXPORT_FOLDER_NAME)],
+      ['root_drive_folder', JSON.stringify(ROOT_DRIVE_FOLDER)],
       ['seeded', JSON.stringify(true)],
     ]
 
