@@ -522,16 +522,6 @@
   box-shadow: 0 1px 6px rgba(27,43,75,0.08);
 }
 
-/* Card for the currently-selected default part */
-.partCardDefault {
-  border-color: #C9A84C;
-  background: #fdf8ed;
-}
-
-.partCardDefault:hover {
-  border-color: #b8933e;
-  background: #faefd4;
-}
 
 .partCardName {
   font-size: 14px;

@@ -88,6 +88,16 @@ function formatDate(iso) {
   })
 }
 
+// Formats a start + optional end time for the gig card.
+// Examples: ("7:30 PM", "9:00 PM") → "7:30 PM–9:00 PM"
+//           ("7:30 PM", null)      → "7:30 PM"
+//           (null, null)           → null
+function formatTimeRange(start, end) {
+  if (!start && !end) return null
+  if (!end) return start
+  return `${start}–${end}`
+}
+
 // ── Lineup helpers ──────────────────────────────────────────────────────────
 
 // Parses the raw `gigs.lineup` JSON into a working state object keyed by part.
@@ -173,6 +183,28 @@ function findEntrySetId(sets, entryId) {
   return null
 }
 
+// ── GigList helpers ─────────────────────────────────────────────────────────
+
+// Parses a gig card's parts + lineup JSON into an array of { part, musicianName }
+// where musicianName is the assigned musician's name, or null if unassigned.
+// musicianMap is a Map<id → name> built from the musicians table.
+// Returns [] on any parse error so the card renders without crashing.
+function parseCardLineup(partsJson, lineupJson, musicianMap) {
+  try {
+    const parts      = partsJson   ? JSON.parse(partsJson)   : []
+    const lineupData = lineupJson  ? JSON.parse(lineupJson)  : {}
+    return parts.map(part => {
+      const assignedId = lineupData[part]?.assigned ?? null
+      return {
+        part,
+        musicianName: assignedId ? (musicianMap.get(assignedId) ?? '?') : null,
+      }
+    })
+  } catch {
+    return []
+  }
+}
+
 // ── GigList ─────────────────────────────────────────────────────────────────
 // Shows all gigs as clickable cards sorted by date descending.
 // Clicking "+ New Gig" opens GigForm.
@@ -180,18 +212,32 @@ function GigList() {
   const navigate = useNavigate()
   const [gigs, setGigs]         = useState(null)
   const [showForm, setShowForm] = useState(false)
+  // musicians is loaded once so card lineups can resolve id → name
+  const [musicians, setMusicians] = useState([])
 
   const loadGigs = useCallback(async () => {
     try {
-      const rows = await db.exec(
-        'SELECT id, name, band_name, date, time, venue, setlist, locked ' +
-        'FROM gigs ORDER BY date DESC, name ASC'
-      )
+      // Load gigs and musicians in parallel; parts + lineup are needed for card display
+      const [rows, musRows] = await Promise.all([
+        db.exec(
+          'SELECT id, name, band_name, date, time, end_time, venue, setlist, locked, parts, lineup ' +
+          'FROM gigs ORDER BY date DESC, name ASC'
+        ),
+        db.exec('SELECT id, name FROM musicians'),
+      ])
       setGigs(rows)
+      setMusicians(musRows)
     } catch (err) {
       console.error('[Gigs] Failed to load gigs:', err)
     }
   }, [])
+
+  // Build a stable id→name map so parseCardLineup doesn't re-scan the array each render
+  const musicianMap = useMemo(() => {
+    const m = new Map()
+    for (const mus of musicians) m.set(mus.id, mus.name)
+    return m
+  }, [musicians])
 
   useEffect(() => { loadGigs() }, [loadGigs])
 
@@ -245,8 +291,10 @@ function GigList() {
       {gigs && gigs.length > 0 && (
         <div className={styles.gigCards}>
           {gigs.map(gig => {
-            const nSets  = totalSets(gig.setlist)
-            const nSongs = totalSongs(gig.setlist)
+            const nSets      = totalSets(gig.setlist)
+            const nSongs     = totalSongs(gig.setlist)
+            // Resolve lineup chips: active parts with assigned name or null if empty
+            const lineupChips = parseCardLineup(gig.parts, gig.lineup, musicianMap)
             return (
               <div
                 key={gig.id}
@@ -262,11 +310,41 @@ function GigList() {
                     <span className={styles.lockBadge} title="Locked">🔒</span>
                   )}
                 </div>
-                <div className={styles.gigCardMeta}>
-                  <span>{formatDate(gig.date)}</span>
-                  {gig.time  && <span>· {gig.time}</span>}
-                  {gig.venue && <span>· {gig.venue}</span>}
-                </div>
+
+                {/* Date · Time(–EndTime) · Venue — shown when at least one field is set */}
+                {(gig.date || gig.time || gig.end_time || gig.venue) && (
+                  <div className={styles.gigCardMeta}>
+                    {gig.date && <span>{formatDate(gig.date)}</span>}
+                    {formatTimeRange(gig.time, gig.end_time) && (
+                      <span>· {formatTimeRange(gig.time, gig.end_time)}</span>
+                    )}
+                    {gig.venue && <span>· {gig.venue}</span>}
+                  </div>
+                )}
+
+                {/* Line Up: one chip per active part.
+                    Assigned parts come first (sorted), unassigned parts in red after.
+                    For assigned chips the part name is bold; musician name is normal weight. */}
+                {lineupChips.length > 0 && (
+                  <div className={styles.gigCardLineup}>
+                    {[...lineupChips]
+                      .sort((a, b) => (b.musicianName ? 1 : 0) - (a.musicianName ? 1 : 0))
+                      .map(({ part, musicianName }) => (
+                        <span
+                          key={part}
+                          className={musicianName
+                            ? styles.gigCardLineupChip
+                            : styles.gigCardLineupChipEmpty}
+                          title={musicianName ? undefined : `${part} not yet assigned`}
+                        >
+                          {musicianName
+                            ? <><strong>{part}</strong>{': ' + musicianName}</>
+                            : part}
+                        </span>
+                      ))}
+                  </div>
+                )}
+
                 <div className={styles.gigCardStats}>
                   {nSets} set{nSets !== 1 ? 's' : ''} · {nSongs} song{nSongs !== 1 ? 's' : ''}
                 </div>
@@ -290,6 +368,7 @@ function GigForm({ existingGigs, onSave, onCancel }) {
   const [bandName, setBandName] = useState('')
   const [date, setDate]         = useState('')
   const [time, setTime]         = useState('')
+  const [endTime, setEndTime]   = useState('')
   const [venue, setVenue]       = useState('')
   const [city, setCity]         = useState('')
   const [gigState, setGigState] = useState('')
@@ -351,14 +430,15 @@ function GigForm({ existingGigs, onSave, onCancel }) {
       }
 
       await db.run(
-        `INSERT INTO gigs (id, name, band_name, date, time, venue, city, state, setlist, print_sublists, parts)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?)`,
+        `INSERT INTO gigs (id, name, band_name, date, time, end_time, venue, city, state, setlist, print_sublists, parts)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?)`,
         [
           gigId,
           gigName.trim(),
           bandName.trim()  || null,
           date,
           time.trim()      || null,
+          endTime.trim()   || null,
           venue.trim()     || null,
           city.trim()      || null,
           gigState.trim()  || null,
@@ -419,12 +499,21 @@ function GigForm({ existingGigs, onSave, onCancel }) {
               />
             </label>
             <label className={styles.formLabel} style={{ flex: 1 }}>
-              Time
+              Start time
               <input
                 className={styles.formInput}
                 value={time}
                 onChange={e => setTime(e.target.value)}
                 placeholder="e.g. 7:30 PM"
+              />
+            </label>
+            <label className={styles.formLabel} style={{ flex: 1 }}>
+              End time
+              <input
+                className={styles.formInput}
+                value={endTime}
+                onChange={e => setEndTime(e.target.value)}
+                placeholder="e.g. 9:00 PM"
               />
             </label>
           </div>
@@ -917,7 +1006,7 @@ function GigEditor({ gigId }) {
   const [songMap, setSongMap]       = useState(new Map())
   const [search, setSearch]         = useState('')
   const [meta, setMeta]             = useState({
-    name: '', band_name: '', date: '', time: '', venue: '', city: '', state: '',
+    name: '', band_name: '', date: '', time: '', end_time: '', venue: '', city: '', state: '',
   })
   const [saveStatus, setSaveStatus] = useState('saved')  // 'saved'|'saving'|'error'
   const [activeDrag, setActiveDrag] = useState(null)     // for DragOverlay
@@ -966,6 +1055,7 @@ function GigEditor({ gigId }) {
           band_name: row.band_name ?? '',
           date:      row.date      ?? '',
           time:      row.time      ?? '',
+          end_time:  row.end_time  ?? '',
           venue:     row.venue     ?? '',
           city:      row.city      ?? '',
           state:     row.state     ?? '',
@@ -1039,12 +1129,13 @@ function GigEditor({ gigId }) {
     metaSaveRef.current = setTimeout(async () => {
       try {
         await db.run(
-          'UPDATE gigs SET name=?, band_name=?, date=?, time=?, venue=?, city=?, state=? WHERE id=?',
+          'UPDATE gigs SET name=?, band_name=?, date=?, time=?, end_time=?, venue=?, city=?, state=? WHERE id=?',
           [
             meta.name      || '(untitled)',
             meta.band_name || null,
             meta.date      || null,
             meta.time      || null,
+            meta.end_time  || null,
             meta.venue     || null,
             meta.city      || null,
             meta.state     || null,
@@ -1057,7 +1148,7 @@ function GigEditor({ gigId }) {
       }
     }, 400)
     return () => clearTimeout(metaSaveRef.current)
-  }, [meta.name, meta.band_name, meta.date, meta.time, meta.venue, meta.city, meta.state, gigId])
+  }, [meta.name, meta.band_name, meta.date, meta.time, meta.end_time, meta.venue, meta.city, meta.state, gigId])
 
   // ── Derived: all song IDs currently in any set ────────────────────────
   // Used to enforce the no-duplicate rule and to mark used songs in the
@@ -1436,7 +1527,14 @@ function GigEditor({ gigId }) {
             className={styles.metaInput}
             value={meta.time}
             onChange={e => setMeta(m => ({ ...m, time: e.target.value }))}
-            placeholder="Time"
+            placeholder="Start time"
+            readOnly={isLocked}
+          />
+          <input
+            className={styles.metaInput}
+            value={meta.end_time}
+            onChange={e => setMeta(m => ({ ...m, end_time: e.target.value }))}
+            placeholder="End time"
             readOnly={isLocked}
           />
           <input
@@ -1516,13 +1614,18 @@ function GigEditor({ gigId }) {
 
               return (
                 <div key={part} className={styles.lineupCol}>
-                  {/* Part toggle chip */}
-                  <label className={`${styles.partChip} ${isActive ? styles.partChipActive : ''}`}>
+                  {/* Part toggle chip — disabled when the gig is locked */}
+                  <label className={[
+                    styles.partChip,
+                    isActive  ? styles.partChipActive  : '',
+                    isLocked  ? styles.partChipLocked  : '',
+                  ].filter(Boolean).join(' ')}>
                     <input
                       type="checkbox"
                       className={styles.partCheckbox}
                       checked={isActive}
                       onChange={() => togglePart(part)}
+                      disabled={isLocked}
                     />
                     {part}
                   </label>

@@ -122,6 +122,10 @@ export async function applySchema(db) {
     await db.run('ALTER TABLE gigs ADD COLUMN lineup TEXT')
     console.log('[db/schema] Migration: added gigs.lineup')
   }
+  if (!gigColNames.has('end_time')) {
+    await db.run('ALTER TABLE gigs ADD COLUMN end_time TEXT')
+    console.log('[db/schema] Migration: added gigs.end_time')
+  }
 
   // Musician city / state columns (added for Line Up feature).
   const musicianCols     = await db.exec('PRAGMA table_info(musicians)')

@@ -87,6 +87,40 @@
   color: #A0AEC0;
 }
 
+/* ── Line Up row on gig cards ─────────────────────────────────────────────── */
+
+/* Wrapping row of part chips */
+.gigCardLineup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+/* Assigned part: "Part: Musician Name" in a muted pill */
+.gigCardLineupChip {
+  font-size: 11px;
+  color: #4A5568;
+  background: #EFF2F7;
+  border-radius: 4px;
+  padding: 2px 7px;
+  font-family: Arial, sans-serif;
+  white-space: nowrap;
+}
+
+/* Unassigned active part: just the part name in red — needs attention */
+.gigCardLineupChipEmpty {
+  font-size: 11px;
+  font-weight: 700;
+  color: #C0392B;
+  background: #FEF2F2;
+  border: 1px solid #f5c2c2;
+  border-radius: 4px;
+  padding: 1px 7px;
+  font-family: Arial, sans-serif;
+  white-space: nowrap;
+}
+
 /* ── Shared buttons ───────────────────────────────────────────────────────── */
 
 .primaryBtn {
@@ -863,6 +897,18 @@ select.formInput {
 .partChip:hover {
   border-color: #1B2B4B;
   color: #1B2B4B;
+}
+
+/* Locked chip — not interactive; cursor reverts to default */
+.partChipLocked {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.partChipLocked:hover {
+  border-color: inherit;
+  color: inherit;
+  background: inherit;
 }
 
 /* Active (checked) chip — navy fill */

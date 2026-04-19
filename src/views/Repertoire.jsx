@@ -110,13 +110,8 @@ function PdfViewer({ song }) {
   const availableParts = Object.entries(rawParts).filter(([, id]) => !!id).map(([n]) => n)
   const missingParts   = Object.keys(rawParts).filter(n => !rawParts[n])
 
-  // Prefer Rhythm Guitar as the default part
-  function defaultPart(avail) {
-    return avail.includes('Rhythm Guitar') ? 'Rhythm Guitar' : avail[0] ?? null
-  }
-
   const [viewMode,     setViewMode]     = useState('details')  // 'details' | 'pdf'
-  const [selectedPart, setSelectedPart] = useState(() => defaultPart(availableParts))
+  const [selectedPart, setSelectedPart] = useState(null)  // set when user clicks a part card
   const [pdfDoc,       setPdfDoc]       = useState(null)
   const [pageNum,      setPageNum]      = useState(1)
   const [numPages,     setNumPages]     = useState(0)
@@ -130,8 +125,7 @@ function PdfViewer({ song }) {
 
   // ── Reset when song changes ───────────────────────────────────────────
   useEffect(() => {
-    const avail = Object.entries(JSON.parse(song.parts || '{}')).filter(([, id]) => !!id).map(([n]) => n)
-    setSelectedPart(defaultPart(avail))
+    setSelectedPart(null)
     setViewMode('details')
     setPageNum(1); setPdfDoc(null); setNumPages(0); setError(null)
   }, [song.id])  // eslint-disable-line react-hooks/exhaustive-deps
@@ -287,7 +281,7 @@ function PdfViewer({ song }) {
               {availableParts.map(name => (
                 <button
                   key={name}
-                  className={`${styles.partCard} ${selectedPart === name ? styles.partCardDefault : ''}`}
+                  className={styles.partCard}
                   onClick={() => openPartInPdf(name)}
                 >
                   <span className={styles.partCardName}>{name}</span>

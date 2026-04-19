@@ -304,14 +304,15 @@ export async function loadGigsFromDrive() {
     await db.run('DELETE FROM gigs')
     for (const gig of data.gigs) {
       await db.run(
-        `INSERT INTO gigs (id, name, band_name, date, time, venue, city, state, setlist, print_sublists, locked, parts, lineup)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO gigs (id, name, band_name, date, time, end_time, venue, city, state, setlist, print_sublists, locked, parts, lineup)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           gig.id,
           gig.name,
           gig.band_name      ?? null,
           gig.date           ?? null,
           gig.time           ?? null,
+          gig.end_time       ?? null,
           gig.venue          ?? null,
           gig.city           ?? null,
           gig.state          ?? null,
@@ -341,7 +342,7 @@ export async function saveGigsToDrive() {
     if (!syncFolderId) return  // root folder not configured or not found in Drive
 
     const rows = await db.exec(
-      `SELECT id, name, band_name, date, time, venue, city, state, setlist, print_sublists, locked, parts, lineup
+      `SELECT id, name, band_name, date, time, end_time, venue, city, state, setlist, print_sublists, locked, parts, lineup
        FROM gigs ORDER BY date DESC, name ASC`
     )
 
