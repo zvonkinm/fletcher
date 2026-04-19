@@ -135,19 +135,25 @@
 .cardHeader {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
+  gap: 8px;
+  /* No bottom margin — location row has its own top margin */
 }
 
+/* Locked mode: plain text name, no flex-grow so parts can sit beside it */
 .cardName {
-  flex: 1;
+  flex: 0 0 auto;
   font-size: 15px;
   font-weight: 700;
   color: #1B2B4B;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
 }
 
+/* Edit mode: fixed-width input so parts still have room on the same line */
 .cardNameInput {
-  flex: 1;
+  flex: 0 0 160px;
   font-size: 15px;
   font-weight: 700;
   color: #1B2B4B;
@@ -166,15 +172,17 @@
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
+  margin-left: auto; /* push to the right edge */
 }
 
-/* ── Parts row ───────────────────────────────────────────────────────────── */
+/* ── Parts row (inline, sits between name and actions) ───────────────────── */
 
 .partsRow {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   align-items: center;
+  flex: 1; /* fills remaining space between name and action buttons */
 }
 
 /* Read-only chip (locked mode) */
@@ -313,7 +321,7 @@
   display: flex;
   gap: 6px;
   align-items: center;
-  margin-top: 6px;
+  margin-top: 5px;
 }
 
 .locationLabel {

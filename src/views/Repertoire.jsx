@@ -1,14 +1,17 @@
 // src/views/Repertoire.jsx
 import { useEffect, useState, useCallback, useRef } from 'react'
 import * as pdfjsLib from 'pdfjs-dist'
-import PdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { db } from '../db/index.js'
 import { syncLibrary } from '../drive/sync.js'
 import { fetchPdfBytes } from '../drive/files.js'
 import styles from './Repertoire.module.css'
 
-// Set up PDF.js worker once at module level
-pdfjsLib.GlobalWorkerOptions.workerSrc = PdfWorkerUrl
+// Set up PDF.js worker once at module level.
+// The worker is copied to public/ as pdf.worker.min.mjs so it can be served
+// as a plain static file — bypassing Vite's module pre-bundling, which cannot
+// resolve ?url imports for packages excluded from optimizeDeps.
+// The base path (/fletcher/) matches vite.config.js `base` and GitHub Pages.
+pdfjsLib.GlobalWorkerOptions.workerSrc = '/fletcher/pdf.worker.min.mjs'
 
 // ── PDF bytes cache ────────────────────────────────────────────────────────
 // Keyed by Drive file ID. Avoids re-downloading when switching parts or

@@ -65,7 +65,7 @@ function MusicianCard({ musician, activeParts, onUpdate, onDelete }) {
   return (
     <div className={`${styles.card} ${locked ? styles.cardLocked : ''}`}>
 
-      {/* ── Header row: name + actions ────────────────────────────── */}
+      {/* ── Main row: name · parts (inline) · actions ─────────────── */}
       <div className={styles.cardHeader}>
         {locked ? (
           <span className={styles.cardName}>{musician.name}</span>
@@ -79,6 +79,32 @@ function MusicianCard({ musician, activeParts, onUpdate, onDelete }) {
             placeholder="Musician name"
           />
         )}
+
+        {/* Parts sit inline between the name and the action buttons */}
+        <div className={styles.partsRow}>
+          {locked ? (
+            // Read-only chips — only the parts the musician actually plays
+            parts.length > 0
+              ? parts.map(p => <span key={p} className={styles.partChip}>{p}</span>)
+              : <span className={styles.noPartsLabel}>No instruments</span>
+          ) : (
+            // Editable checkbox chips — one per active_part
+            activeParts.map(part => (
+              <label
+                key={part}
+                className={`${styles.partChipCheck} ${parts.includes(part) ? styles.partChipCheckActive : ''}`}
+              >
+                <input
+                  type="checkbox"
+                  className={styles.partCheckbox}
+                  checked={parts.includes(part)}
+                  onChange={() => togglePart(part)}
+                />
+                {part}
+              </label>
+            ))
+          )}
+        </div>
 
         <div className={styles.cardActions}>
           <button
@@ -98,32 +124,6 @@ function MusicianCard({ musician, activeParts, onUpdate, onDelete }) {
             </button>
           )}
         </div>
-      </div>
-
-      {/* ── Instruments row ────────────────────────────────────────── */}
-      <div className={styles.partsRow}>
-        {locked ? (
-          // Read-only chips — only show parts the musician actually plays
-          parts.length > 0
-            ? parts.map(p => <span key={p} className={styles.partChip}>{p}</span>)
-            : <span className={styles.noPartsLabel}>No instruments assigned</span>
-        ) : (
-          // Editable checkboxes — one per active_part
-          activeParts.map(part => (
-            <label
-              key={part}
-              className={`${styles.partChipCheck} ${parts.includes(part) ? styles.partChipCheckActive : ''}`}
-            >
-              <input
-                type="checkbox"
-                className={styles.partCheckbox}
-                checked={parts.includes(part)}
-                onChange={() => togglePart(part)}
-              />
-              {part}
-            </label>
-          ))
-        )}
       </div>
 
       {/* ── Location row: city + state ─────────────────────────────── */}
