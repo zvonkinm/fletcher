@@ -126,6 +126,7 @@ All tables live in an SQLite WASM database stored in OPFS (Origin Private File S
 | `locked` | INTEGER | 0 / 1 — locked gigs are read-only |
 | `parts` | TEXT NULL | JSON: `string[]` — active parts for this specific gig |
 | `lineup` | TEXT NULL | JSON: `{ [partName]: { assigned: id\|null, declined: id[] } }` |
+| `financials` | TEXT NULL | JSON: payment data — see Payment Info panel below |
 
 ### `musicians` table
 | Column | Type | Notes |
@@ -146,9 +147,25 @@ All tables live in an SQLite WASM database stored in OPFS (Origin Private File S
 | `last_synced` | timestamp ms | When the song library was last synced |
 | `seeded` | `1` | Internal flag: prevents re-seeding on subsequent launches |
 
+### `financials` JSON shape (stored in `gigs.financials`)
+| Field | Type | Notes |
+|---|---|---|
+| `contract_pay` | number\|null | Agreed payment amount |
+| `contract_pay_mode` | `"total"` \| `"per_person"` | Whether the amount is total or per musician |
+| `extra_expenses` | number\|null | Out-of-pocket costs to subtract from total |
+| `extra_expenses_memo` | string | Free-text description of the expense |
+| `venue_pay` | number\|null | Cash received from the venue |
+| `venmo_tips` | number\|null | Tips collected via Venmo |
+| `cash_tips` | number\|null | Cash tips collected |
+| `paid_per_person` | number\|null | Actual amount sent to each musician |
+| `exclude_bandleader` | boolean | If true, hired count = assigned − 1 (default true) |
+| `paid_musicians` | `{ [musicianId]: boolean }` | Per-musician paid flag |
+
+Computed (not stored): Total Tips = venmo + cash; Total Pay = venue + tips − expenses; Per Person Pay = total / assigned count; Total Paid Out = paid_per_person × hired count; To Band Fund = Total Pay − paid_per_person × all assigned count.
+
 ### Migrations
 `schema.js` runs `PRAGMA table_info` on startup and uses `ALTER TABLE ADD COLUMN` for any missing columns. All migrations are idempotent and logged. Historical migrations:
-- `gigs`: added `band_name`, `time`, `end_time`, `locked`, `parts` (renamed from `seats`), `city`, `state`, `lineup`
+- `gigs`: added `band_name`, `time`, `end_time`, `locked`, `parts` (renamed from `seats`), `city`, `state`, `lineup`, `financials`
 - `musicians`: added `city`, `state`
 - `settings`: renamed `active_seats` → `active_parts`; renamed `export_folder_name` / `master_folder_name` → `root_drive_folder`
 
@@ -277,6 +294,14 @@ Saves to DB + fires Drive sync; navigates to editor on save
 - Warnings shown inline (songs missing a part file); export continues despite warnings
 - "Done" button appears when complete; shows error count if any
 
+**Payment Info panel** (between Line Up and Setlist):
+- Collapsible (collapsed by default); collapsed header shows a brief summary of any entered values
+- Editable fields: Contract Pay (with per-person / total toggle), Extra Expenses + memo, Pay from Venue, Venmo Tips, Cash Tips, Paid Per Person
+- Computed read-only row: Total Tips (Venmo + Cash), Total Pay (venue + tips − expenses), Per Person Pay (total ÷ assigned musician count)
+- Musician payment list: one row per assigned musician with a paid/unpaid checkbox; paid rows turn green
+- All inputs become read-only when the gig is locked
+- Auto-saved to `gigs.financials` (debounced 600 ms) and synced to Drive via `gigs.info`
+
 **Locking:** Locked gigs are fully read-only — all inputs disabled, part chips disabled, no drag-and-drop, no export.
 
 ### Personnel (`/personnel`)
@@ -313,7 +338,7 @@ Saves to DB + fires Drive sync; navigates to editor on save
 
 ### Future / Phase 2
 
-6. **Payments tracking** — Track who was paid for each gig, amounts, payment method. Was in the original spreadsheet but not yet designed for Fletcher.
+6. ~~**Payments tracking**~~ — **Implemented** as the Payment Info panel (see above).
 
 7. **Gig notes field** — The `notes` column exists in the `gigs` table but is not surfaced in the editor UI.
 

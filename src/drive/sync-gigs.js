@@ -223,6 +223,52 @@ async function upsertJsonFile(name, data, syncFolderId) {
   }
 }
 
+// ── Financial aggregation ─────────────────────────────────────────────────────
+
+// Build year-level financial summaries from an array of gig rows (as stored in
+// the DB / gigs.info).  Each row must carry .date, .financials, and .lineup.
+// Returns [{ year, gigCount, totalPay, totalPaidOut, bandFund }] sorted newest first.
+// Included in the gigs.info payload so consumers can read totals without
+// scanning all gig records.
+function buildYearSummaries(rows) {
+  const map = {}
+  for (const row of rows) {
+    const year = row.date ? row.date.slice(0, 4) : 'undated'
+    if (!map[year]) map[year] = { year, gigCount: 0, totalPay: 0, totalPaidOut: 0, bandFund: 0 }
+    map[year].gigCount++
+
+    let fin = {}
+    try { if (row.financials) fin = JSON.parse(row.financials) } catch {}
+
+    const venue    = fin.venue_pay      ?? 0
+    const venmo    = fin.venmo_tips     ?? 0
+    const cash     = fin.cash_tips      ?? 0
+    const extra    = fin.extra_expenses ?? 0
+    const totalPay = venue + venmo + cash - extra
+    map[year].totalPay += totalPay
+
+    // Count musicians assigned across all parts for this gig
+    let numMusicians = 0
+    try {
+      if (row.lineup) {
+        const ld  = JSON.parse(row.lineup)
+        const ids = new Set(Object.values(ld).map(pl => pl.assigned).filter(Boolean))
+        numMusicians = ids.size
+      }
+    } catch {}
+
+    const excludeBandleader = fin.exclude_bandleader ?? true
+    const numHired = (numMusicians > 0 && excludeBandleader) ? numMusicians - 1 : numMusicians
+    const paidPer  = fin.paid_per_person ?? null
+
+    if (paidPer !== null) {
+      map[year].totalPaidOut += paidPer * numHired
+      map[year].bandFund     += totalPay - paidPer * numMusicians
+    }
+  }
+  return Object.values(map).sort((a, b) => String(b.year).localeCompare(String(a.year)))
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
@@ -311,8 +357,8 @@ export async function loadGigsFromDrive() {
     await db.run('DELETE FROM gigs')
     for (const gig of data.gigs) {
       await db.run(
-        `INSERT INTO gigs (id, name, band_name, date, time, end_time, venue, city, state, setlist, print_sublists, locked, parts, lineup)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO gigs (id, name, band_name, date, time, end_time, venue, city, state, setlist, print_sublists, locked, parts, lineup, financials)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           gig.id,
           gig.name,
@@ -328,6 +374,7 @@ export async function loadGigsFromDrive() {
           gig.locked         ?? 0,
           gig.parts          ?? null,
           gig.lineup         ?? null,
+          gig.financials     ?? null,
         ]
       )
     }
@@ -351,14 +398,15 @@ export async function saveGigsToDrive() {
     if (!syncFolderId) return  // root folder not configured or not found in Drive
 
     const rows = await db.exec(
-      `SELECT id, name, band_name, date, time, end_time, venue, city, state, setlist, print_sublists, locked, parts, lineup
+      `SELECT id, name, band_name, date, time, end_time, venue, city, state, setlist, print_sublists, locked, parts, lineup, financials
        FROM gigs ORDER BY date DESC, name ASC`
     )
 
     await upsertJsonFile(GIGS_FILE_NAME, {
-      version: FILE_VERSION,
-      savedAt: new Date().toISOString(),
-      gigs:    rows,
+      version:       FILE_VERSION,
+      savedAt:       new Date().toISOString(),
+      gigs:          rows,
+      yearSummaries: buildYearSummaries(rows),
     }, syncFolderId)
     console.log(`[sync] Saved ${rows.length} gig(s) to Drive`)
   } catch (err) {

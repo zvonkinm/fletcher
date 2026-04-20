@@ -126,6 +126,12 @@ export async function applySchema(db) {
     await db.run('ALTER TABLE gigs ADD COLUMN end_time TEXT')
     console.log('[db/schema] Migration: added gigs.end_time')
   }
+  // Financials: stores payment fields for the gig as a JSON blob.
+  // Added when the Payment Info panel was introduced.
+  if (!gigColNames.has('financials')) {
+    await db.run('ALTER TABLE gigs ADD COLUMN financials TEXT')
+    console.log('[db/schema] Migration: added gigs.financials')
+  }
 
   // Musician city / state columns (added for Line Up feature).
   const musicianCols     = await db.exec('PRAGMA table_info(musicians)')

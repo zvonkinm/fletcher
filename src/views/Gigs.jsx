@@ -98,6 +98,54 @@ function formatTimeRange(start, end) {
   return `${start}–${end}`
 }
 
+// Formats a number as a dollar string, e.g. -$12.50 or $0.00.
+// Returns '—' for null/undefined so computed rows look clean when no data exists.
+function fmtDollar(n) {
+  if (n === null || n === undefined || isNaN(n)) return '—'
+  const sign = n < 0 ? '-' : ''
+  return `${sign}$${Math.abs(n).toFixed(2)}`
+}
+
+// Compute financial totals for a single gig from raw DB column strings.
+// Returns { totalPay, totalPaidOut, bandFund, hasData }.
+// totalPaidOut / bandFund are null when paid_per_person was not entered.
+function computeGigTotals(financialsJson, lineupJson) {
+  let fin = {}
+  try { if (financialsJson) fin = JSON.parse(financialsJson) } catch {}
+
+  const venue    = fin.venue_pay      ?? 0
+  const venmo    = fin.venmo_tips     ?? 0
+  const cash     = fin.cash_tips      ?? 0
+  const extra    = fin.extra_expenses ?? 0
+  const totalPay = venue + venmo + cash - extra
+
+  // Count unique assigned musicians across all parts
+  let numMusicians = 0
+  try {
+    if (lineupJson) {
+      const ld  = JSON.parse(lineupJson)
+      const ids = new Set(Object.values(ld).map(pl => pl.assigned).filter(Boolean))
+      numMusicians = ids.size
+    }
+  } catch {}
+
+  const excludeBandleader = fin.exclude_bandleader ?? true
+  const numHired = (numMusicians > 0 && excludeBandleader) ? numMusicians - 1 : numMusicians
+  const paidPer  = fin.paid_per_person ?? null
+
+  const totalPaidOut = paidPer !== null ? paidPer * numHired                    : null
+  const bandFund     = paidPer !== null ? totalPay - paidPer * numMusicians     : null
+
+  // "has data" = at least one income/expense field was explicitly entered
+  const hasData = fin.venue_pay      !== undefined
+    || fin.venmo_tips     !== undefined
+    || fin.cash_tips      !== undefined
+    || fin.extra_expenses !== undefined
+    || fin.paid_per_person !== undefined
+
+  return { totalPay, totalPaidOut, bandFund, hasData }
+}
+
 // ── Lineup helpers ──────────────────────────────────────────────────────────
 
 // Parses the raw `gigs.lineup` JSON into a working state object keyed by part.
@@ -217,10 +265,11 @@ function GigList() {
 
   const loadGigs = useCallback(async () => {
     try {
-      // Load gigs and musicians in parallel; parts + lineup are needed for card display
+      // Load gigs and musicians in parallel; parts + lineup are needed for card display;
+      // financials is needed for the per-year aggregate totals in the list header.
       const [rows, musRows] = await Promise.all([
         db.exec(
-          'SELECT id, name, band_name, date, time, end_time, venue, setlist, locked, parts, lineup ' +
+          'SELECT id, name, band_name, date, time, end_time, venue, setlist, locked, parts, lineup, financials ' +
           'FROM gigs ORDER BY date DESC, name ASC'
         ),
         db.exec('SELECT id, name FROM musicians'),
@@ -238,6 +287,40 @@ function GigList() {
     for (const mus of musicians) m.set(mus.id, mus.name)
     return m
   }, [musicians])
+
+  // Group gigs by calendar year (gigs with no date go into a 'undated' bucket at the end).
+  // Each group accumulates financial totals for the year header summary row.
+  const yearGroups = useMemo(() => {
+    if (!gigs || gigs.length === 0) return []
+    const groupMap = new Map()
+    for (const gig of gigs) {
+      const year = gig.date ? gig.date.slice(0, 4) : null
+      const key  = year ?? 'undated'
+      if (!groupMap.has(key)) {
+        groupMap.set(key, {
+          year,
+          gigs:          [],
+          totalPay:      0,
+          totalPaidOut:  0,
+          bandFund:      0,
+          hasPaidOut:    false,   // true once any gig has paid_per_person set
+          hasBandFund:   false,
+          anyFinancials: false,   // true once any gig has any financial data
+        })
+      }
+      const grp = groupMap.get(key)
+      grp.gigs.push(gig)
+
+      const { totalPay, totalPaidOut, bandFund, hasData } = computeGigTotals(gig.financials, gig.lineup)
+      if (hasData) {
+        grp.anyFinancials = true
+        grp.totalPay += totalPay
+      }
+      if (totalPaidOut !== null) { grp.totalPaidOut += totalPaidOut; grp.hasPaidOut  = true }
+      if (bandFund     !== null) { grp.bandFund     += bandFund;     grp.hasBandFund = true }
+    }
+    return [...groupMap.values()]
+  }, [gigs])
 
   useEffect(() => { loadGigs() }, [loadGigs])
 
@@ -282,11 +365,36 @@ function GigList() {
 
       {gigs && gigs.length > 0 && (
         <div className={styles.gigCards}>
-          {gigs.map(gig => {
-            const setsInfo    = parseSetsInfo(gig.setlist)
-            // Resolve lineup chips: active parts with assigned name or null if empty
-            const lineupChips = parseCardLineup(gig.parts, gig.lineup, musicianMap)
-            return (
+          {yearGroups.map(group => (
+            <div key={group.year ?? 'undated'} className={styles.yearGroup}>
+
+              {/* Year header: year label + financial aggregate summary */}
+              <div className={styles.yearGroupHeader}>
+                <span className={styles.yearGroupLabel}>{group.year ?? 'No date'}</span>
+                {group.anyFinancials && (
+                  <span className={styles.yearGroupStats}>
+                    <span className={styles.yearGroupStat}>
+                      Pay <span className={styles.yearGroupStatValue}>{fmtDollar(group.totalPay)}</span>
+                    </span>
+                    {group.hasPaidOut && (
+                      <span className={styles.yearGroupStat}>
+                        Paid out <span className={styles.yearGroupStatValue}>{fmtDollar(group.totalPaidOut)}</span>
+                      </span>
+                    )}
+                    {group.hasBandFund && (
+                      <span className={styles.yearGroupStat}>
+                        Band fund <span className={styles.yearGroupStatValue}>{fmtDollar(group.bandFund)}</span>
+                      </span>
+                    )}
+                  </span>
+                )}
+              </div>
+
+              {group.gigs.map(gig => {
+                const setsInfo    = parseSetsInfo(gig.setlist)
+                // Resolve lineup chips: active parts with assigned name or null if empty
+                const lineupChips = parseCardLineup(gig.parts, gig.lineup, musicianMap)
+                return (
               <div
                 key={gig.id}
                 className={styles.gigCard}
@@ -347,8 +455,10 @@ function GigList() {
                   </div>
                 )}
               </div>
-            )
-          })}
+                )
+              })}
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -989,6 +1099,356 @@ function MusicianPicker({ partLineup, eligible, showOnlyLocal, assignedMusician,
   )
 }
 
+// ── Default financials shape ─────────────────────────────────────────────────
+// All numeric fields are null when unset so the UI can show empty inputs.
+// contract_pay_mode toggles between 'total' and 'per_person' for labelling.
+// paid_musicians: { [musicianId]: boolean } tracks who has been paid.
+const DEFAULT_FINANCIALS = {
+  contract_pay:        null,
+  contract_pay_mode:   'total',  // 'total' | 'per_person'
+  extra_expenses:      null,
+  extra_expenses_memo: '',
+  venue_pay:           null,
+  venmo_tips:          null,
+  cash_tips:           null,
+  paid_per_person:     null,
+  exclude_bandleader:  true,     // when true, "hired musicians" = total assigned − 1
+  paid_musicians:      {},
+}
+
+// ── PaymentPanel ─────────────────────────────────────────────────────────────
+// Collapsible section placed between Line Up and the Setlist editor.
+// Shows editable payment inputs, computed totals, and per-musician paid status.
+// Props:
+//   financials          — the current financials object (from DEFAULT_FINANCIALS shape)
+//   lineup              — { [partName]: { assigned: id|null, declined: id[] } }
+//   musicians           — all musician rows from DB (to resolve names)
+//   isLocked            — when true all inputs are read-only
+//   onFinancialsChange  — called with the full updated financials object
+function PaymentPanel({ financials, lineup, musicians, isLocked, onFinancialsChange }) {
+  // Collapsed by default; user expands to view/edit payment info
+  const [open, setOpen] = useState(false)
+
+  // Update a single field in the financials object and propagate to parent
+  function setField(field, val) {
+    onFinancialsChange({ ...financials, [field]: val })
+  }
+
+  // Convert a raw input string to a number or null.
+  // Returns null for empty string so we can distinguish "not entered" from 0.
+  function parseNum(raw) {
+    if (raw === '' || raw === null || raw === undefined) return null
+    const n = parseFloat(raw)
+    return isNaN(n) ? null : n
+  }
+
+  // ── Computed values ──────────────────────────────────────────────────
+  // Use 0 for null inputs so arithmetic always yields a number.
+  const venmo     = financials.venmo_tips     ?? 0
+  const cash      = financials.cash_tips      ?? 0
+  const venue     = financials.venue_pay      ?? 0
+  const extra     = financials.extra_expenses ?? 0
+  const totalTips = venmo + cash
+  // Total pay = venue pay + all tips − extra expenses
+  const totalPay  = venue + totalTips - extra
+
+  // Count unique musicians assigned across all parts.
+  // A Set handles the edge case where one musician covers multiple parts.
+  const assignedIds = new Set(
+    Object.values(lineup).map(pl => pl.assigned).filter(Boolean)
+  )
+  const numMusicians = assignedIds.size
+
+  // Per Person Pay: what the gig math suggests per musician (Total Pay ÷ all assigned)
+  const perPersonPay = numMusicians > 0 ? totalPay / numMusicians : null
+
+  // "Hired musicians" = assigned count minus the bandleader when exclusion is on.
+  // This is used for Total Paid Out (money actually distributed to hired musicians).
+  const excludeBandleader = financials.exclude_bandleader ?? true
+  const numHiredMusicians = (numMusicians > 0 && excludeBandleader)
+    ? numMusicians - 1
+    : numMusicians
+
+  const paidPer = financials.paid_per_person
+  // Total Paid Out: what was actually sent to the hired musicians
+  const totalPaidOut = paidPer !== null ? paidPer * numHiredMusicians : null
+  // To Band Fund: total income minus everyone's share (including bandleader's cut)
+  const toBandFund   = paidPer !== null ? totalPay - paidPer * numMusicians : null
+
+  // Musicians who appear in the lineup (assigned) — used for the paid-status list
+  const assignedMusicians = musicians.filter(m => assignedIds.has(m.id))
+
+  // Toggle the paid flag for one musician in paid_musicians dict
+  function toggleMusicianPaid(musicianId) {
+    const current = financials.paid_musicians ?? {}
+    setField('paid_musicians', { ...current, [musicianId]: !(current[musicianId] ?? false) })
+  }
+
+  // ── Collapsed summary ────────────────────────────────────────────────
+  // Shown in the toggle button when panel is closed and data exists.
+  // Displays: Venue pay · Total tips · Total pay · Per-person pay · paid status.
+  const hasPayData = financials.venue_pay      !== null
+    || financials.venmo_tips     !== null
+    || financials.cash_tips      !== null
+    || financials.extra_expenses !== null
+    || financials.paid_per_person !== null
+
+  const summaryParts = []
+  if (hasPayData) {
+    summaryParts.push(`Venue ${fmtDollar(financials.venue_pay ?? 0)}`)
+    summaryParts.push(`Tips ${fmtDollar(totalTips)}`)
+    summaryParts.push(`Total ${fmtDollar(totalPay)}`)
+    if (numMusicians > 0) summaryParts.push(`/person ${fmtDollar(perPersonPay)}`)
+  }
+  if (assignedMusicians.length > 0) {
+    const allPaid = assignedMusicians.every(m => (financials.paid_musicians ?? {})[m.id])
+    summaryParts.push(allPaid ? '✓ All paid' : '⚠ Unpaid')
+  }
+  const summary = summaryParts.join(' · ')
+
+  return (
+    <div className={styles.paymentPanel}>
+
+      {/* ── Collapsible header: chevron LEFT of the title ─────────────── */}
+      <button className={styles.paymentPanelToggle} onClick={() => setOpen(v => !v)}>
+        <span className={styles.paymentToggleChevron}>{open ? '▲' : '▼'}</span>
+        <span className={styles.lineupSectionTitle}>Payment Info</span>
+        {!open && summary && (
+          <span className={styles.paymentSummary}>{summary}</span>
+        )}
+      </button>
+
+      {/* ── Expanded body ──────────────────────────────────────────────── */}
+      {open && (
+        <div className={styles.paymentPanelBody}>
+
+          {/* ── Editable input fields ────────────────────────────────── */}
+          <div className={styles.paymentFields}>
+
+            {/* Contract Pay: dollar amount plus a per-person/total mode toggle */}
+            <div className={styles.paymentRow}>
+              <span className={styles.paymentLabel}>Contract Pay</span>
+              <div className={styles.paymentInputGroup}>
+                <span className={styles.paymentDollar}>$</span>
+                <input
+                  className={styles.paymentInput}
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                  value={financials.contract_pay ?? ''}
+                  readOnly={isLocked}
+                  onChange={e => setField('contract_pay', parseNum(e.target.value))}
+                />
+                {/* Toggle between 'total' and 'per_person' label */}
+                <button
+                  className={`${styles.paymentModeBtn} ${financials.contract_pay_mode === 'per_person' ? styles.paymentModeBtnActive : ''}`}
+                  onClick={() => setField('contract_pay_mode',
+                    financials.contract_pay_mode === 'per_person' ? 'total' : 'per_person')}
+                  disabled={isLocked}
+                  title="Toggle between total and per-person amount"
+                >
+                  {financials.contract_pay_mode === 'per_person' ? 'per person' : 'total'}
+                </button>
+              </div>
+            </div>
+
+            {/* Extra Expenses: dollar amount + memo explaining what it was for */}
+            <div className={styles.paymentRow}>
+              <span className={styles.paymentLabel}>Extra Expenses</span>
+              <div className={styles.paymentInputGroup}>
+                <span className={styles.paymentDollar}>$</span>
+                <input
+                  className={styles.paymentInput}
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                  value={financials.extra_expenses ?? ''}
+                  readOnly={isLocked}
+                  onChange={e => setField('extra_expenses', parseNum(e.target.value))}
+                />
+                <input
+                  className={`${styles.paymentInput} ${styles.paymentMemo}`}
+                  type="text"
+                  placeholder="What for…"
+                  value={financials.extra_expenses_memo ?? ''}
+                  readOnly={isLocked}
+                  onChange={e => setField('extra_expenses_memo', e.target.value)}
+                />
+              </div>
+            </div>
+
+            {/* Pay from Venue */}
+            <div className={styles.paymentRow}>
+              <span className={styles.paymentLabel}>Pay from Venue</span>
+              <div className={styles.paymentInputGroup}>
+                <span className={styles.paymentDollar}>$</span>
+                <input
+                  className={styles.paymentInput}
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                  value={financials.venue_pay ?? ''}
+                  readOnly={isLocked}
+                  onChange={e => setField('venue_pay', parseNum(e.target.value))}
+                />
+              </div>
+            </div>
+
+            {/* Tips: Venmo and Cash side-by-side in one row */}
+            <div className={styles.paymentRow}>
+              <span className={styles.paymentLabel}>Tips</span>
+              <div className={styles.paymentInputGroup}>
+                <span className={styles.paymentTipLabel}>Venmo</span>
+                <span className={styles.paymentDollar}>$</span>
+                <input
+                  className={styles.paymentInput}
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                  value={financials.venmo_tips ?? ''}
+                  readOnly={isLocked}
+                  onChange={e => setField('venmo_tips', parseNum(e.target.value))}
+                />
+                <span className={styles.paymentTipLabel}>Cash</span>
+                <span className={styles.paymentDollar}>$</span>
+                <input
+                  className={styles.paymentInput}
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                  value={financials.cash_tips ?? ''}
+                  readOnly={isLocked}
+                  onChange={e => setField('cash_tips', parseNum(e.target.value))}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* ── Computed totals (income/expense inputs only) ──────────── */}
+          <div className={styles.paymentComputed}>
+            <div className={styles.paymentComputedRow}>
+              <span className={styles.paymentComputedLabel}>Total Tips</span>
+              <span className={styles.paymentComputedValue}>{fmtDollar(totalTips)}</span>
+            </div>
+            <div className={styles.paymentComputedRow}>
+              <span className={styles.paymentComputedLabel}>Total Pay</span>
+              <span className={styles.paymentComputedValue}>{fmtDollar(totalPay)}</span>
+            </div>
+            <div className={styles.paymentComputedRow}>
+              {/* Show divisor so the math is transparent */}
+              <span className={styles.paymentComputedLabel}>
+                Per Person Pay
+                {numMusicians > 0 && (
+                  <span className={styles.paymentComputedNote}> ÷ {numMusicians}</span>
+                )}
+              </span>
+              <span className={styles.paymentComputedValue}>
+                {perPersonPay !== null ? fmtDollar(perPersonPay) : '—'}
+              </span>
+            </div>
+          </div>
+
+          {/* ── Paid Per Person (editable) ── placed after the computed totals ── */}
+          <div className={styles.paymentRow}>
+            <span className={styles.paymentLabel}>Paid Per Person</span>
+            <div className={styles.paymentInputGroup}>
+              <span className={styles.paymentDollar}>$</span>
+              <input
+                className={styles.paymentInput}
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="0.00"
+                value={financials.paid_per_person ?? ''}
+                readOnly={isLocked}
+                onChange={e => setField('paid_per_person', parseNum(e.target.value))}
+              />
+            </div>
+          </div>
+
+          {/* ── Exclude bandleader checkbox ───────────────────────────── */}
+          {/* When checked, "hired musicians" = total assigned − 1, so the
+              bandleader's share is excluded from Total Paid Out.
+              Checked by default since the bandleader keeps their cut directly. */}
+          <label className={styles.paymentExcludeBandleader}>
+            <input
+              type="checkbox"
+              className={styles.paymentMusicianCheck}
+              checked={excludeBandleader}
+              disabled={isLocked}
+              onChange={e => setField('exclude_bandleader', e.target.checked)}
+            />
+            Exclude band leader
+            {numMusicians > 0 && (
+              <span className={styles.paymentComputedNote}>
+                ({numHiredMusicians} hired musician{numHiredMusicians !== 1 ? 's' : ''})
+              </span>
+            )}
+          </label>
+
+          {/* ── Computed payout totals (depend on Paid Per Person) ────── */}
+          <div className={styles.paymentComputed}>
+            <div className={styles.paymentComputedRow}>
+              {/* "× N" shows which musician count was used */}
+              <span className={styles.paymentComputedLabel}>
+                Total Paid Out
+                {paidPer !== null && numHiredMusicians > 0 && (
+                  <span className={styles.paymentComputedNote}> × {numHiredMusicians}</span>
+                )}
+              </span>
+              <span className={styles.paymentComputedValue}>
+                {totalPaidOut !== null ? fmtDollar(totalPaidOut) : '—'}
+              </span>
+            </div>
+            <div className={styles.paymentComputedRow}>
+              {/* Total Pay − (paid × all musicians including bandleader) */}
+              <span className={styles.paymentComputedLabel}>To Band Fund</span>
+              <span className={styles.paymentComputedValue}>
+                {toBandFund !== null ? fmtDollar(toBandFund) : '—'}
+              </span>
+            </div>
+          </div>
+
+          {/* ── Per-musician paid status ──────────────────────────────── */}
+          {/* Only shown when at least one musician is assigned in the lineup */}
+          {assignedMusicians.length > 0 && (
+            <div className={styles.paymentMusicianList}>
+              <div className={styles.paymentMusicianListTitle}>Musician Payments</div>
+              {assignedMusicians.map(m => {
+                const isPaid = (financials.paid_musicians ?? {})[m.id] ?? false
+                return (
+                  <label
+                    key={m.id}
+                    className={`${styles.paymentMusicianRow} ${isPaid ? styles.paymentMusicianRowPaid : ''}`}
+                  >
+                    <input
+                      type="checkbox"
+                      className={styles.paymentMusicianCheck}
+                      checked={isPaid}
+                      disabled={isLocked}
+                      onChange={() => toggleMusicianPaid(m.id)}
+                    />
+                    <span className={styles.paymentMusicianName}>{m.name}</span>
+                    <span className={styles.paymentMusicianStatus}>
+                      {isPaid ? 'Paid' : 'Unpaid'}
+                    </span>
+                  </label>
+                )
+              })}
+            </div>
+          )}
+
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── GigEditor ────────────────────────────────────────────────────────────────
 // The full setlist editor for one gig.
 // Left panel:   searchable repertoire, each song draggable
@@ -1020,6 +1480,8 @@ function GigEditor({ gigId }) {
   const [lineup, setLineup]             = useState({})
   // showOnlyLocal: filters lineup dropdowns to musicians matching the gig's city/state
   const [showOnlyLocal, setShowOnlyLocal] = useState(true)
+  // financials: payment data for this gig (see DEFAULT_FINANCIALS shape)
+  const [financials, setFinancials]     = useState(DEFAULT_FINANCIALS)
   // export panel state
   const [exportOpen, setExportOpen]     = useState(false)
   const [exportLog, setExportLog]       = useState([])
@@ -1030,10 +1492,11 @@ function GigEditor({ gigId }) {
   const [repoVisible, setRepoVisible]   = useState(true)
 
   // loadedRef prevents auto-save effects from firing during the initial load
-  const loadedRef      = useRef(false)
-  const setsSaveRef    = useRef(null)
-  const metaSaveRef    = useRef(null)
-  const lineupSaveRef  = useRef(null)
+  const loadedRef          = useRef(false)
+  const setsSaveRef        = useRef(null)
+  const metaSaveRef        = useRef(null)
+  const lineupSaveRef      = useRef(null)
+  const financialsSaveRef  = useRef(null)
   // latestLineupRef holds the current lineup object so the debounced save
   // always writes the most recent value regardless of closure timing.
   const latestLineupRef = useRef({})
@@ -1079,6 +1542,15 @@ function GigEditor({ gigId }) {
           'SELECT id, name, parts, city, state FROM musicians ORDER BY name ASC'
         )
         setMusicians(musRows)
+
+        // Load financials from the stored JSON; fall back to defaults for any
+        // missing keys (handles gigs created before this column was added).
+        try {
+          const rawFin = row.financials ? JSON.parse(row.financials) : {}
+          setFinancials({ ...DEFAULT_FINANCIALS, ...rawFin })
+        } catch {
+          setFinancials(DEFAULT_FINANCIALS)
+        }
 
         // Load the full repertoire for the left panel
         const allSongs = await db.exec(
@@ -1147,6 +1619,23 @@ function GigEditor({ gigId }) {
     }, 400)
     return () => clearTimeout(metaSaveRef.current)
   }, [meta.name, meta.band_name, meta.date, meta.time, meta.end_time, meta.venue, meta.city, meta.state, gigId])
+
+  // ── Auto-save financials ──────────────────────────────────────────────
+  // Debounced 600ms after any change. Skips the initial load.
+  useEffect(() => {
+    if (!loadedRef.current) return
+    clearTimeout(financialsSaveRef.current)
+    financialsSaveRef.current = setTimeout(async () => {
+      try {
+        await db.run('UPDATE gigs SET financials = ? WHERE id = ?',
+          [JSON.stringify(financials), gigId])
+        saveGigsToDrive()  // fire-and-forget Drive sync
+      } catch (err) {
+        console.error('[Gigs] Financials save failed:', err)
+      }
+    }, 600)
+    return () => clearTimeout(financialsSaveRef.current)
+  }, [financials, gigId])
 
   // ── Derived: all song IDs currently in any set ────────────────────────
   // Used to enforce the no-duplicate rule and to mark used songs in the
@@ -1351,13 +1840,10 @@ function GigEditor({ gigId }) {
       await db.run('UPDATE gigs SET parts = ? WHERE id = ?', [JSON.stringify(next), gigId])
       // Save rebased lineup (debounced so rapid toggles don't spam)
       clearTimeout(lineupSaveRef.current)
-      lineupSaveRef.current = setTimeout(async () => {
-        try {
-          await db.run('UPDATE gigs SET lineup = ? WHERE id = ?',
-            [JSON.stringify(latestLineupRef.current), gigId])
-        } catch (e) {
-          console.error('[Gigs] Lineup rebase save failed:', e)
-        }
+      lineupSaveRef.current = setTimeout(() => {
+        db.run('UPDATE gigs SET lineup = ? WHERE id = ?',
+          [JSON.stringify(latestLineupRef.current), gigId])
+          .catch(e => console.error('[Gigs] Lineup rebase save failed:', e))
       }, 300)
       saveGigsToDrive()  // fire-and-forget Drive sync
     } catch (err) {
@@ -1646,6 +2132,16 @@ function GigEditor({ gigId }) {
           </div>
         </div>
       )}
+
+      {/* ── Payment Info panel ───────────────────────────────────────── */}
+      {/* Collapsible; sits between Line Up and the setlist editor body. */}
+      <PaymentPanel
+        financials={financials}
+        lineup={lineup}
+        musicians={musicians}
+        isLocked={isLocked}
+        onFinancialsChange={setFinancials}
+      />
 
       {/* ── Export progress modal ────────────────────────────────────── */}
       {exportOpen && (
