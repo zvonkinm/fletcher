@@ -223,6 +223,16 @@
   box-shadow: 0 4px 24px rgba(27,43,75,0.10);
 }
 
+/* Fullscreen overlay — overrides position/size/radius from .viewerPane */
+.viewerPaneFullscreen {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 9999;
+  border-radius: 0 !important;
+}
+
 /* ── Viewer header ──────────────────────────────────────────────────────── */
 
 .viewerHeader {

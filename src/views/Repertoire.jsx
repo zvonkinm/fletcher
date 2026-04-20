@@ -113,14 +113,15 @@ function PdfViewer({ song }) {
   const availableParts = Object.entries(rawParts).filter(([, id]) => !!id).map(([n]) => n)
   const missingParts   = Object.keys(rawParts).filter(n => !rawParts[n])
 
-  const [viewMode,     setViewMode]     = useState('details')  // 'details' | 'pdf'
-  const [selectedPart, setSelectedPart] = useState(null)  // set when user clicks a part card
-  const [pdfDoc,       setPdfDoc]       = useState(null)
-  const [pageNum,      setPageNum]      = useState(1)
-  const [numPages,     setNumPages]     = useState(0)
-  const [scale,        setScale]        = useState(1.5)
-  const [loading,      setLoading]      = useState(false)
-  const [error,        setError]        = useState(null)
+  const [viewMode,      setViewMode]      = useState('details')  // 'details' | 'pdf'
+  const [selectedPart,  setSelectedPart]  = useState(null)  // set when user clicks a part card
+  const [pdfDoc,        setPdfDoc]        = useState(null)
+  const [pageNum,       setPageNum]       = useState(1)
+  const [numPages,      setNumPages]      = useState(0)
+  const [scale,         setScale]         = useState(1.5)
+  const [loading,       setLoading]       = useState(false)
+  const [error,         setError]         = useState(null)
+  const [isFullscreen,  setIsFullscreen]  = useState(false)
 
   const canvasRef     = useRef(null)
   const wrapRef       = useRef(null)
@@ -195,6 +196,28 @@ function PdfViewer({ song }) {
     return () => { cancelled = true }
   }, [pdfDoc, pageNum, scale, viewMode])
 
+  // ── Exit fullscreen on Escape key ─────────────────────────────────────
+  useEffect(() => {
+    if (!isFullscreen) return
+    function onKeyDown(e) { if (e.key === 'Escape') setIsFullscreen(false) }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [isFullscreen])
+
+  // ── Re-fit to width when fullscreen state changes ─────────────────────
+  // rAF lets the browser repaint the new layout before we measure clientWidth.
+  useEffect(() => {
+    if (!pdfDoc || !wrapRef.current) return
+    const id = requestAnimationFrame(() => {
+      pdfDoc.getPage(pageNum).then(page => {
+        const naturalW   = page.getViewport({ scale: 1 }).width
+        const containerW = wrapRef.current?.clientWidth ?? 800
+        setScale((containerW - 40) / naturalW)
+      })
+    })
+    return () => cancelAnimationFrame(id)
+  }, [isFullscreen])  // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Controls ──────────────────────────────────────────────────────────
   function fitWidth() {
     if (!pdfDoc || !wrapRef.current) return
@@ -217,7 +240,7 @@ function PdfViewer({ song }) {
   const zoomOut  = () => setScale(s => Math.max(+(s - 0.25).toFixed(2), 0.25))
 
   return (
-    <div className={styles.viewerPane}>
+    <div className={`${styles.viewerPane}${isFullscreen ? ` ${styles.viewerPaneFullscreen}` : ''}`}>
 
       {/* ── Header ──────────────────────────────────────────────────── */}
       <div className={styles.viewerHeader}>
@@ -235,7 +258,7 @@ function PdfViewer({ song }) {
         {viewMode === 'pdf' && (
           <>
             <div className={styles.viewerTitleRow}>
-              <button className={styles.backBtn} onClick={() => setViewMode('details')}>
+              <button className={styles.backBtn} onClick={() => { setViewMode('details'); setIsFullscreen(false) }}>
                 ← Details
               </button>
               <IndexBadge idx={song.idx} songType={song.song_type} subtype={song.subtype} />
@@ -263,6 +286,13 @@ function PdfViewer({ song }) {
               <button className={styles.ctrlBtn} onClick={zoomOut} disabled={scale <= 0.25}>−</button>
               <span className={styles.zoomInfo}>{Math.round(scale * 100)}%</span>
               <button className={styles.ctrlBtn} onClick={zoomIn} disabled={scale >= 4}>+</button>
+              <div className={styles.ctrlSep} />
+              <button
+                className={styles.ctrlBtn}
+                onClick={() => setIsFullscreen(f => !f)}
+                title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen'}
+                disabled={!pdfDoc}
+              >{isFullscreen ? '⊡' : '⛶'}</button>
             </div>
           </>
         )}
