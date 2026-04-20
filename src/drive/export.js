@@ -250,6 +250,8 @@ export async function exportGig({ gig, onProgress = () => {}, onStageProgress = 
     // Multi-set format — flatten in set order
     for (const set of rawSetlist) songIds = songIds.concat(set.song_ids || [])
   }
+  // Remove write-in entries — they have no sheet music to export
+  songIds = songIds.filter(id => !id.startsWith('wi:'))
   if (songIds.length === 0) throw new Error('Setlist is empty.')
 
   // ── Load song rows from SQLite ─────────────────────────────────────────

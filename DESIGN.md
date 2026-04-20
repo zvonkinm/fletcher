@@ -121,7 +121,7 @@ All tables live in an SQLite WASM database stored in OPFS (Origin Private File S
 | `venue` | TEXT NULL | |
 | `city` | TEXT NULL | Used for Line Up locality filtering |
 | `state` | TEXT NULL | Used for Line Up locality filtering |
-| `setlist` | TEXT | JSON: `[{ id, name, song_ids: string[] }]` (multi-set format) |
+| `setlist` | TEXT | JSON: `[{ id, name, song_ids: string[] }]` (multi-set format); write-in slots stored as `wi:<randomId>:<title>` strings in `song_ids` |
 | `print_sublists` | TEXT | JSON: `[{ name, song_ids: string[] }]` |
 | `locked` | INTEGER | 0 / 1 — locked gigs are read-only |
 | `parts` | TEXT NULL | JSON: `string[]` — active parts for this specific gig |
@@ -286,6 +286,7 @@ Saves to DB + fires Drive sync; navigates to editor on save
 - Individual songs and entire sets can be deleted
 - Song appears in the Repertoire panel as "in setlist" badge when added; cannot be added twice
 - Repertoire panel includes search + type/subtype filter
+- **Write-in entries:** "+ Write-in" button at the bottom of each set column adds a placeholder slot with a custom, inline-editable title and a solid black `XXXX` index pill; write-ins are stored as `wi:<randomId>:<title>` in `song_ids` and are silently skipped during PDF export
 
 **Export modal:**
 - Triggered from header "Export" button (disabled if gig is locked)

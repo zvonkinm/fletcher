@@ -874,6 +874,42 @@ select.formInput {
   color: #C0392B;
 }
 
+/* Inline title input for write-in entries */
+.writeInTitleInput {
+  flex: 1;
+  font-size: 16px;
+  font-family: Arial, sans-serif;
+  color: #1B2B4B;
+  border: 1px solid #1B2B4B;
+  border-radius: 4px;
+  padding: 1px 5px;
+  outline: none;
+  min-width: 0;
+}
+
+/* "+ Write-in" button inside a set column body */
+.addWriteInBtn {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  background: none;
+  border: 1px dashed #C0CBD8;
+  border-radius: 5px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #A0AEC0;
+  cursor: pointer;
+  font-family: Arial, sans-serif;
+  text-align: left;
+  transition: border-color 0.12s, color 0.12s;
+}
+
+.addWriteInBtn:hover {
+  border-color: #4A5568;
+  color: #4A5568;
+}
+
 /* ── Index + key badges ───────────────────────────────────────────────────── */
 
 /* Coloured pill — background is set inline (data-driven) */

@@ -47,9 +47,11 @@ const TYPE_COLORS = {
 }
 
 // Coloured pill showing a 4-digit index; colour driven by type + subtype.
-function IndexBadge({ idx, songType, subtype }) {
-  const key = (songType ?? 'Unknown') + '/' + (subtype ?? 'Unknown')
-  const { bg, text } = TYPE_COLORS[key] ?? TYPE_COLORS['Unknown/Unknown']
+// Pass writeIn={true} for write-in entries — renders with a solid black pill.
+function IndexBadge({ idx, songType, subtype, writeIn }) {
+  const { bg, text } = writeIn
+    ? { bg: '#000', text: '#fff' }
+    : (TYPE_COLORS[(songType ?? 'Unknown') + '/' + (subtype ?? 'Unknown')] ?? TYPE_COLORS['Unknown/Unknown'])
   return (
     <span className={styles.badge} style={{ background: bg, color: text }}>
       {idx}
@@ -63,6 +65,21 @@ function IndexBadge({ idx, songType, subtype }) {
 // and entry IDs — these are never written directly to the DB.
 function newId() {
   return Math.random().toString(36).slice(2, 10)
+}
+
+// ── Write-in helpers ────────────────────────────────────────────────────────
+// Write-in entries are stored in song_ids as "wi:<randomId>:<title>".
+// The random ID ensures two write-ins with the same title are distinct in
+// allUsedSongIds and the storage array. The title can contain colons.
+function isWriteIn(songId) {
+  return typeof songId === 'string' && songId.startsWith('wi:')
+}
+function getWriteInTitle(songId) {
+  // "wi:abc123:My Custom Song" → "My Custom Song"
+  return songId.split(':').slice(2).join(':')
+}
+function makeWriteInSongId(title) {
+  return `wi:${Math.random().toString(36).slice(2, 8)}:${title}`
 }
 
 // Turns a gig name + ISO date into a URL-safe slug used as the gig's DB id.
@@ -767,12 +784,13 @@ function DraggableSong({ song, isUsed, isLocked, onAdd }) {
 // One song row inside a set column. Sortable — can be dragged to reorder
 // within its set or moved to a different set.
 // Props:
-//   entry    — { entryId, songId }
-//   song     — song object from DB, or null if not yet synced from Drive
-//   position — 1-based position number displayed to the left of the badge
-//   isLocked — when true, drag is disabled and the remove button is hidden
-//   onRemove(entryId) — called when the × button is clicked
-function SetEntry({ entry, song, position, isLocked, onRemove }) {
+//   entry              — { entryId, songId }
+//   song               — song object from DB, or null if not yet synced from Drive
+//   position           — 1-based position number displayed to the left of the badge
+//   isLocked           — when true, drag is disabled and the remove button is hidden
+//   onRemove(entryId)  — called when the × button is clicked
+//   onRenameWriteIn(entryId, newTitle) — called when a write-in title is committed
+function SetEntry({ entry, song, position, isLocked, onRemove, onRenameWriteIn }) {
   const {
     attributes, listeners, setNodeRef,
     transform, transition, isDragging,
@@ -781,6 +799,22 @@ function SetEntry({ entry, song, position, isLocked, onRemove }) {
     data:     { type: 'entry', entryId: entry.entryId },
     disabled: isLocked,  // dnd-kit won't activate drag when the gig is locked
   })
+
+  // Write-in local state: inline title editing (analogous to set rename)
+  const wi = isWriteIn(entry.songId)
+  const [wiEditing, setWiEditing]   = useState(false)
+  const [wiTitle,   setWiTitle]     = useState(wi ? getWriteInTitle(entry.songId) : '')
+
+  // Keep local title in sync if the parent commits a rename and re-renders
+  useEffect(() => {
+    if (wi) setWiTitle(getWriteInTitle(entry.songId))
+  }, [entry.songId])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  function commitWiRename() {
+    setWiEditing(false)
+    const t = wiTitle.trim() || 'Write-in'
+    onRenameWriteIn?.(entry.entryId, t)
+  }
 
   // CSS.Transform.toString() converts dnd-kit's transform object to a CSS
   // translate3d(...) string. transition is supplied by dnd-kit to animate
@@ -810,7 +844,35 @@ function SetEntry({ entry, song, position, isLocked, onRemove }) {
 
       <span className={styles.entryPos}>{position}</span>
 
-      {song ? (
+      {wi ? (
+        // Write-in entry: black "XXXX" pill + editable title
+        <>
+          <IndexBadge idx="XXXX" writeIn />
+          {wiEditing ? (
+            <input
+              className={styles.writeInTitleInput}
+              value={wiTitle}
+              onChange={e => setWiTitle(e.target.value)}
+              onBlur={commitWiRename}
+              onKeyDown={e => {
+                if (e.key === 'Enter')  commitWiRename()
+                if (e.key === 'Escape') { setWiEditing(false); setWiTitle(getWriteInTitle(entry.songId)) }
+              }}
+              onPointerDown={e => e.stopPropagation()}
+              autoFocus
+            />
+          ) : (
+            <span
+              className={styles.entryTitle}
+              onClick={isLocked ? undefined : () => setWiEditing(true)}
+              style={isLocked ? { cursor: 'default' } : { cursor: 'text' }}
+              title={isLocked ? undefined : 'Click to rename'}
+            >
+              {getWriteInTitle(entry.songId) || 'Write-in'}
+            </span>
+          )}
+        </>
+      ) : song ? (
         <>
           <IndexBadge idx={song.idx} songType={song.song_type} subtype={song.subtype} />
           {song.key_variant && (
@@ -843,13 +905,15 @@ function SetEntry({ entry, song, position, isLocked, onRemove }) {
 // Uses useDroppable so songs can be dropped even when the column is empty
 // (no sortable items means closestCenter won't find any targets otherwise).
 // Props:
-//   set            — { id, name, entries[] }
-//   songMap        — Map<songId → song object>
-//   isSongDragging — true when a repertoire song is currently being dragged
+//   set                      — { id, name, entries[] }
+//   songMap                  — Map<songId → song object>
+//   isSongDragging           — true when a repertoire song is currently being dragged
 //   onRename(setId, name)
 //   onRemoveEntry(setId, entryId)
 //   onDelete(setId)
-function SetColumn({ set, songMap, isSongDragging, isLocked, onRename, onRemoveEntry, onDelete }) {
+//   onAddWriteIn(setId)
+//   onRenameWriteIn(setId, entryId, newTitle)
+function SetColumn({ set, songMap, isSongDragging, isLocked, onRename, onRemoveEntry, onDelete, onAddWriteIn, onRenameWriteIn }) {
   // When locked, dropping is still registered by useDroppable but handleDragEnd
   // in GigEditor checks isLocked before mutating state, so drops are no-ops.
   const { setNodeRef, isOver } = useDroppable({ id: 'set-col-' + set.id })
@@ -937,13 +1001,26 @@ function SetColumn({ set, songMap, isSongDragging, isLocked, onRename, onRemoveE
             <SetEntry
               key={entry.entryId}
               entry={entry}
-              song={songMap.get(entry.songId) ?? null}
+              song={isWriteIn(entry.songId) ? null : (songMap.get(entry.songId) ?? null)}
               position={i + 1}
               isLocked={isLocked}
               onRemove={entryId => onRemoveEntry(set.id, entryId)}
+              onRenameWriteIn={(entryId, newTitle) => onRenameWriteIn(set.id, entryId, newTitle)}
             />
           ))}
         </SortableContext>
+
+        {/* Write-in button — below the sorted entries, hidden when locked */}
+        {!isLocked && (
+          <button
+            className={styles.addWriteInBtn}
+            onClick={() => onAddWriteIn(set.id)}
+            onPointerDown={e => e.stopPropagation()}
+            title="Add a write-in (unlisted song or announcement)"
+          >
+            + Write-in
+          </button>
+        )}
       </div>
     </div>
   )
@@ -1809,6 +1886,27 @@ function GigEditor({ gigId }) {
     })
   }
 
+  // Adds a write-in entry (placeholder with custom title) to the given set
+  function addWriteIn(setId) {
+    setSets(prev => prev.map(set =>
+      set.id === setId
+        ? { ...set, entries: [...set.entries, { entryId: newId(), songId: makeWriteInSongId('Write-in') }] }
+        : set
+    ))
+  }
+
+  // Renames a write-in entry — regenerates its songId with the new title embedded
+  function renameWriteInEntry(setId, entryId, newTitle) {
+    setSets(prev => prev.map(set =>
+      set.id !== setId ? set : {
+        ...set,
+        entries: set.entries.map(e =>
+          e.entryId !== entryId ? e : { ...e, songId: makeWriteInSongId(newTitle) }
+        ),
+      }
+    ))
+  }
+
   // ── Delete gig ────────────────────────────────────────────────────────
   async function handleDelete() {
     try {
@@ -1934,15 +2032,17 @@ function GigEditor({ gigId }) {
   // ── Drag overlay: find the song being dragged (for the floating preview) ──
   // For a repo drag: use the song object attached to active.data.
   // For an entry drag: look up the song via the sets + songMap.
+  // Write-in entries produce a synthetic song-like object (_writeIn: true).
   const draggedSong = useMemo(() => {
     if (!activeDrag) return null
     if (activeDrag.type === 'song') return activeDrag.data?.song ?? null
     if (activeDrag.type === 'entry') {
-      const songId = sets
-        .flatMap(s => s.entries)
-        .find(e => e.entryId === activeDrag.id)
-        ?.songId
-      return songId ? (songMap.get(songId) ?? null) : null
+      const entry = sets.flatMap(s => s.entries).find(e => e.entryId === activeDrag.id)
+      if (!entry) return null
+      if (isWriteIn(entry.songId)) {
+        return { idx: 'XXXX', title: getWriteInTitle(entry.songId) || 'Write-in', _writeIn: true }
+      }
+      return songMap.get(entry.songId) ?? null
     }
     return null
   }, [activeDrag, sets, songMap])
@@ -2281,6 +2381,8 @@ function GigEditor({ gigId }) {
                 onRename={renameSet}
                 onRemoveEntry={removeEntryFromSet}
                 onDelete={deleteSet}
+                onAddWriteIn={addWriteIn}
+                onRenameWriteIn={renameWriteInEntry}
               />
             ))}
             {/* Add Set button hidden when locked */}
@@ -2302,6 +2404,7 @@ function GigEditor({ gigId }) {
                 idx={draggedSong.idx}
                 songType={draggedSong.song_type}
                 subtype={draggedSong.subtype}
+                writeIn={!!draggedSong._writeIn}
               />
               <span className={styles.dragOverlayTitle}>{draggedSong.title}</span>
             </div>
