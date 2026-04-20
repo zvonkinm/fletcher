@@ -17,6 +17,12 @@ import logoUrl from './assets/logo.js'
 // React StrictMode's double-invocation doesn't create two token clients.
 const gsiReady = initGsi()
 
+// Guard against React StrictMode's double-invocation of useEffect.
+// Module-level variables are true singletons per page load (reset on F5),
+// so this flag prevents a second concurrent initAuth() run in development
+// without affecting production or normal navigation.
+let authInitStarted = false
+
 export default function App() {
   // authState drives which screen is shown:
   //   'loading'   — checking for an existing session (shown on every page load)
@@ -39,6 +45,11 @@ export default function App() {
 
   // ── Auth init — handle redirect or restore session ─────────────────────
   useEffect(() => {
+    // StrictMode mounts effects twice; the module-level flag ensures only the
+    // first invocation proceeds so Drive sync functions aren't called concurrently.
+    if (authInitStarted) return
+    authInitStarted = true
+
     async function initAuth() {
       await gsiReady  // wait for GSI script to load
 

@@ -22,6 +22,11 @@ const SETTINGS_FILE_NAME  = 'settings.info'
 const MUSICIANS_FILE_NAME = 'musicians.info'
 const FILE_VERSION        = 1
 
+// Concurrency guards — prevent overlapping calls to the destructive
+// DELETE + INSERT load functions (e.g. React StrictMode double-invocation).
+let gigsLoadInProgress      = false
+let musiciansLoadInProgress = false
+
 // Keys that are internal DB flags, not user preferences — excluded from sync.
 const SETTINGS_EXCLUDE = new Set(['seeded'])
 
@@ -285,6 +290,8 @@ export async function saveSettingsToDrive() {
  * Called once at sign-in, after loadSettingsFromDrive.
  */
 export async function loadGigsFromDrive() {
+  if (gigsLoadInProgress) return
+  gigsLoadInProgress = true
   try {
     await db.ready
     await ensureToken()
@@ -327,6 +334,8 @@ export async function loadGigsFromDrive() {
     console.log(`[sync] Loaded ${data.gigs.length} gig(s) from Drive`)
   } catch (err) {
     console.error('[sync] loadGigsFromDrive failed:', err)
+  } finally {
+    gigsLoadInProgress = false
   }
 }
 
@@ -362,6 +371,8 @@ export async function saveGigsToDrive() {
  * Called once at sign-in, after settings and gigs are loaded.
  */
 export async function loadMusiciansFromDrive() {
+  if (musiciansLoadInProgress) return
+  musiciansLoadInProgress = true
   try {
     await db.ready
     await ensureToken()
@@ -388,6 +399,8 @@ export async function loadMusiciansFromDrive() {
     console.log(`[sync] Loaded ${data.musicians.length} musician(s) from Drive`)
   } catch (err) {
     console.error('[sync] loadMusiciansFromDrive failed:', err)
+  } finally {
+    musiciansLoadInProgress = false
   }
 }
 

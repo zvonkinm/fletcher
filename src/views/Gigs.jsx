@@ -241,24 +241,16 @@ function GigList() {
 
   useEffect(() => { loadGigs() }, [loadGigs])
 
-  // Total song count across all sets (handles both legacy + current format).
-  function totalSongs(setlistJson) {
+  // Returns [{ name, count }] for each set in a gig's setlist JSON.
+  // Handles both legacy format (flat string[]) and current format ([{ name, song_ids }]).
+  function parseSetsInfo(setlistJson) {
     try {
       const raw = JSON.parse(setlistJson || '[]')
-      if (raw.length === 0) return 0
-      if (typeof raw[0] === 'string') return raw.length
-      return raw.reduce((n, s) => n + (s.song_ids?.length ?? 0), 0)
-    } catch { return 0 }
-  }
-
-  // Number of sets stored in a gig's setlist JSON.
-  function totalSets(setlistJson) {
-    try {
-      const raw = JSON.parse(setlistJson || '[]')
-      if (raw.length === 0) return 0
-      if (typeof raw[0] === 'string') return 1
-      return raw.length
-    } catch { return 0 }
+      if (raw.length === 0) return []
+      // Legacy: flat array of song-id strings — treat as a single unnamed set
+      if (typeof raw[0] === 'string') return [{ name: 'Set 1', count: raw.length }]
+      return raw.map(s => ({ name: s.name || 'Set', count: s.song_ids?.length ?? 0 }))
+    } catch { return [] }
   }
 
   function handleGigCreated(gigId) {
@@ -291,8 +283,7 @@ function GigList() {
       {gigs && gigs.length > 0 && (
         <div className={styles.gigCards}>
           {gigs.map(gig => {
-            const nSets      = totalSets(gig.setlist)
-            const nSongs     = totalSongs(gig.setlist)
+            const setsInfo    = parseSetsInfo(gig.setlist)
             // Resolve lineup chips: active parts with assigned name or null if empty
             const lineupChips = parseCardLineup(gig.parts, gig.lineup, musicianMap)
             return (
@@ -345,9 +336,16 @@ function GigList() {
                   </div>
                 )}
 
-                <div className={styles.gigCardStats}>
-                  {nSets} set{nSets !== 1 ? 's' : ''} · {nSongs} song{nSongs !== 1 ? 's' : ''}
-                </div>
+                {setsInfo.length > 0 && (
+                  <div className={styles.gigCardStats}>
+                    {setsInfo.map((s, i) => (
+                      <span key={i}>
+                        {i > 0 && ' · '}
+                        {s.name}: {s.count} song{s.count !== 1 ? 's' : ''}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             )
           })}
@@ -1504,7 +1502,7 @@ function GigEditor({ gigId }) {
           <span className={`${styles.saveStatus} ${saveStatus === 'saving' ? styles.saveStatusSaving : saveStatus === 'error' ? styles.saveStatusError : ''}`}>
             {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'error' ? 'Save error' : 'Saved'}
           </span>
-          <button className={styles.deleteBtn} onClick={() => setShowDelete(true)}>
+          <button className={styles.deleteBtn} onClick={() => setShowDelete(true)} disabled={isLocked}>
             Delete gig
           </button>
         </div>
