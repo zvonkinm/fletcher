@@ -201,7 +201,7 @@ async function downloadJson(fileId) {
 
 // Upload a new JSON file via multipart upload; returns the new file ID.
 async function createJsonFile(name, data, parentId) {
-  const json     = JSON.stringify(data)
+  const json     = JSON.stringify(data, null, 2)
   const metadata = JSON.stringify({ name, mimeType: 'application/json', parents: [parentId] })
   const boundary = 'fletcher_sync_boundary'
   const body     = [
@@ -227,7 +227,7 @@ async function createJsonFile(name, data, parentId) {
 
 // Overwrite an existing Drive file's content via PATCH multipart.
 async function updateJsonFile(fileId, data) {
-  const json     = JSON.stringify(data)
+  const json     = JSON.stringify(data, null, 2)
   const metadata = JSON.stringify({ mimeType: 'application/json' })
   const boundary = 'fletcher_sync_boundary'
   const body     = [
