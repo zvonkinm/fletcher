@@ -39,7 +39,7 @@ const TYPE_COLORS = {
   'Arrangements/12 Bar':  { bg: '#1a56a0', text: '#fff' },  // 11xx blue
   'Arrangements/Bluesy':  { bg: '#5b8dd9', text: '#fff' },  // 12xx
   'Instrumentals/Swing':  { bg: '#ca8a04', text: '#fff' },  // 20xx yellow
-  'Instrumentals/12 Bar': { bg: '#c2410c', text: '#fff' },  // 21xx orange
+  'Instrumentals/12 Bar': { bg: '#e06b10', text: '#fff' },  // 21xx orange
   'Lead Sheet/Swing':     { bg: '#C0392B', text: '#fff' },  // 30xx red
   'Lead Sheet/12 Bar':    { bg: '#7c3aed', text: '#fff' },  // 31xx purple
   'Lead Sheet/Bluesy':    { bg: '#c06090', text: '#fff' },  // 32xx
@@ -152,6 +152,8 @@ function computeGigTotals(financialsJson, lineupJson) {
 
   const totalPaidOut = paidPer !== null ? paidPer * numHired                    : null
   const bandFund     = paidPer !== null ? totalPay - paidPer * numMusicians     : null
+  // Bandleader keeps their own per-person share when "exclude bandleader" is on
+  const bandleaderPay = (paidPer !== null && excludeBandleader) ? paidPer : null
 
   // "has data" = at least one income/expense field was explicitly entered
   const hasData = fin.venue_pay      !== undefined
@@ -160,7 +162,7 @@ function computeGigTotals(financialsJson, lineupJson) {
     || fin.extra_expenses !== undefined
     || fin.paid_per_person !== undefined
 
-  return { totalPay, totalPaidOut, bandFund, hasData }
+  return { totalPay, totalPaidOut, bandFund, bandleaderPay, hasData }
 }
 
 // ── Lineup helpers ──────────────────────────────────────────────────────────
@@ -277,6 +279,8 @@ function GigList() {
   const navigate = useNavigate()
   const [gigs, setGigs]         = useState(null)
   const [showForm, setShowForm] = useState(false)
+  // showFinancials: toggled by the header checkbox; off by default to keep the list clean
+  const [showFinancials, setShowFinancials] = useState(false)
   // musicians is loaded once so card lineups can resolve id → name
   const [musicians, setMusicians] = useState([])
 
@@ -316,28 +320,47 @@ function GigList() {
       if (!groupMap.has(key)) {
         groupMap.set(key, {
           year,
-          gigs:          [],
-          totalPay:      0,
-          totalPaidOut:  0,
-          bandFund:      0,
-          hasPaidOut:    false,   // true once any gig has paid_per_person set
-          hasBandFund:   false,
-          anyFinancials: false,   // true once any gig has any financial data
+          gigs:              [],
+          totalPay:          0,
+          totalPaidOut:      0,
+          bandFund:          0,
+          bandleaderPay:     0,
+          hasPaidOut:        false,   // true once any gig has paid_per_person set
+          hasBandFund:       false,
+          hasBandleaderPay:  false,
+          anyFinancials:     false,   // true once any gig has any financial data
         })
       }
       const grp = groupMap.get(key)
       grp.gigs.push(gig)
 
-      const { totalPay, totalPaidOut, bandFund, hasData } = computeGigTotals(gig.financials, gig.lineup)
+      const { totalPay, totalPaidOut, bandFund, bandleaderPay, hasData } = computeGigTotals(gig.financials, gig.lineup)
       if (hasData) {
         grp.anyFinancials = true
         grp.totalPay += totalPay
       }
-      if (totalPaidOut !== null) { grp.totalPaidOut += totalPaidOut; grp.hasPaidOut  = true }
-      if (bandFund     !== null) { grp.bandFund     += bandFund;     grp.hasBandFund = true }
+      if (totalPaidOut  !== null) { grp.totalPaidOut  += totalPaidOut;  grp.hasPaidOut       = true }
+      if (bandFund      !== null) { grp.bandFund      += bandFund;      grp.hasBandFund      = true }
+      if (bandleaderPay !== null) { grp.bandleaderPay += bandleaderPay; grp.hasBandleaderPay = true }
     }
     return [...groupMap.values()]
   }, [gigs])
+
+  // Aggregate totals across all years — used for the single "All Years" summary strip.
+  const allYearsTotals = useMemo(() => {
+    if (!yearGroups.length) return null
+    const t = {
+      totalPay: 0, totalPaidOut: 0, bandFund: 0, bandleaderPay: 0,
+      anyFinancials: false, hasPaidOut: false, hasBandFund: false, hasBandleaderPay: false,
+    }
+    for (const grp of yearGroups) {
+      if (grp.anyFinancials)    { t.anyFinancials = true;    t.totalPay      += grp.totalPay      }
+      if (grp.hasPaidOut)       { t.hasPaidOut       = true; t.totalPaidOut  += grp.totalPaidOut  }
+      if (grp.hasBandFund)      { t.hasBandFund      = true; t.bandFund      += grp.bandFund      }
+      if (grp.hasBandleaderPay) { t.hasBandleaderPay = true; t.bandleaderPay += grp.bandleaderPay }
+    }
+    return t
+  }, [yearGroups])
 
   useEffect(() => { loadGigs() }, [loadGigs])
 
@@ -362,10 +385,48 @@ function GigList() {
     <div className={styles.listContainer}>
       <div className={styles.listHeader}>
         <h2 className={styles.heading}>Gigs</h2>
+        {/* Only show the checkbox if there's any financial data to display */}
+        {allYearsTotals?.anyFinancials && (
+          <label className={styles.financialsToggle}>
+            <input
+              type="checkbox"
+              checked={showFinancials}
+              onChange={e => setShowFinancials(e.target.checked)}
+            />
+            Show financials
+          </label>
+        )}
         <button className={styles.primaryBtn} onClick={() => setShowForm(true)}>
           + New Gig
         </button>
       </div>
+
+      {/* All-years aggregate — shown only when financials checkbox is on */}
+      {showFinancials && allYearsTotals?.anyFinancials && (
+        <div className={styles.allYearsBar}>
+          <span className={styles.allYearsLabel}>All years</span>
+          <span className={styles.yearGroupStats}>
+            <span className={styles.yearGroupStat}>
+              Pay <span className={styles.yearGroupStatValue}>{fmtDollar(allYearsTotals.totalPay)}</span>
+            </span>
+            {allYearsTotals.hasPaidOut && (
+              <span className={styles.yearGroupStat}>
+                Paid out <span className={styles.yearGroupStatValue}>{fmtDollar(allYearsTotals.totalPaidOut)}</span>
+              </span>
+            )}
+            {allYearsTotals.hasBandFund && (
+              <span className={styles.yearGroupStat}>
+                Band fund <span className={styles.yearGroupStatValue}>{fmtDollar(allYearsTotals.bandFund)}</span>
+              </span>
+            )}
+            {allYearsTotals.hasBandleaderPay && (
+              <span className={styles.yearGroupStat}>
+                Bandleader <span className={styles.yearGroupStatValue}>{fmtDollar(allYearsTotals.bandleaderPay)}</span>
+              </span>
+            )}
+          </span>
+        </div>
+      )}
 
       {showForm && (
         <GigForm
@@ -385,10 +446,10 @@ function GigList() {
           {yearGroups.map(group => (
             <div key={group.year ?? 'undated'} className={styles.yearGroup}>
 
-              {/* Year header: year label + financial aggregate summary */}
+              {/* Year header: year label + financial aggregate summary (hidden when showFinancials is off) */}
               <div className={styles.yearGroupHeader}>
                 <span className={styles.yearGroupLabel}>{group.year ?? 'No date'}</span>
-                {group.anyFinancials && (
+                {showFinancials && group.anyFinancials && (
                   <span className={styles.yearGroupStats}>
                     <span className={styles.yearGroupStat}>
                       Pay <span className={styles.yearGroupStatValue}>{fmtDollar(group.totalPay)}</span>
@@ -401,6 +462,11 @@ function GigList() {
                     {group.hasBandFund && (
                       <span className={styles.yearGroupStat}>
                         Band fund <span className={styles.yearGroupStatValue}>{fmtDollar(group.bandFund)}</span>
+                      </span>
+                    )}
+                    {group.hasBandleaderPay && (
+                      <span className={styles.yearGroupStat}>
+                        Bandleader <span className={styles.yearGroupStatValue}>{fmtDollar(group.bandleaderPay)}</span>
                       </span>
                     )}
                   </span>

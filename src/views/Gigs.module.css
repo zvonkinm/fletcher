@@ -32,6 +32,50 @@
   font-family: Arial, sans-serif;
 }
 
+/* ── Show-financials checkbox in the list header ──────────────────────────── */
+
+.financialsToggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #4A5568;
+  cursor: pointer;
+  user-select: none;
+  font-family: Arial, sans-serif;
+  margin-right: auto;   /* pushes "+ New Gig" button to the right */
+}
+
+.financialsToggle input[type="checkbox"] {
+  accent-color: #1B2B4B;
+  cursor: pointer;
+  width: 13px;
+  height: 13px;
+}
+
+/* ── All-years summary bar ────────────────────────────────────────────────── */
+
+/* Full-width strip shown above the year groups when "Show financials" is on */
+.allYearsBar {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 8px 14px;
+  margin-bottom: 4px;
+  background: #F7F9FC;
+  border: 1px solid #D0D9E8;
+  border-radius: 8px;
+  flex-wrap: wrap;
+  font-family: Arial, sans-serif;
+}
+
+.allYearsLabel {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1B2B4B;
+  flex-shrink: 0;
+}
+
 /* ── Gig cards grid ───────────────────────────────────────────────────────── */
 
 .gigCards {

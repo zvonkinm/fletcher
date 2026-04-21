@@ -87,7 +87,12 @@ const ACTIVE_PARTS = [
 //            <ROOT_DRIVE_FOLDER>/Fletcher Sync/gigs.info
 //            <ROOT_DRIVE_FOLDER>/Fletcher Sync/settings.info
 // Configurable in Settings.
-const ROOT_DRIVE_FOLDER = 'The Vintage Ties 2021'
+const ROOT_DRIVE_FOLDER = 'Default Folder'
+
+// Separate Drive folder containing the song PDF library (numbered subfolders).
+// Supports slash-separated paths for nested folders, e.g. "SharedDrive/Repertoire".
+// Configurable in Settings independently of ROOT_DRIVE_FOLDER.
+const LIBRARY_DRIVE_FOLDER = 'Default Library'
 
 // ── Historical gigs ────────────────────────────────────────────────────────
 
@@ -163,6 +168,7 @@ export async function seedIfEmpty(db) {
       ['blacklist', JSON.stringify(BLACKLIST)],
       ['active_parts', JSON.stringify(ACTIVE_PARTS)],
       ['root_drive_folder', JSON.stringify(ROOT_DRIVE_FOLDER)],
+      ['library_drive_folder', JSON.stringify(LIBRARY_DRIVE_FOLDER)],
       ['seeded', JSON.stringify(true)],
     ]
 

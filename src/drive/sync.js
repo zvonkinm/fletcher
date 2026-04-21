@@ -15,7 +15,7 @@
 //   5. Mark folders no longer in Drive as inactive (soft delete)
 
 import { db } from '../db/index.js'
-import { saveSettingsToDrive } from './sync-gigs.js'
+import { saveSettingsToDrive, walkFolderPath } from './sync-gigs.js'
 
 // ── Folder name parser ─────────────────────────────────────────────────────
 // Matches: "1014 There ain't no sweet man"
@@ -91,14 +91,6 @@ async function driveList(params) {
   return allFiles
 }
 
-async function findMasterFolder(name) {
-  const files = await driveList({
-    q: `name = '${name.replace(/'/g, "\\'")}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
-    fields: 'files(id,name)',
-  })
-  return files[0] || null
-}
-
 async function listSubfolders(parentId) {
   return driveList({
     q: `'${parentId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
@@ -128,20 +120,20 @@ export async function syncLibrary(onProgress = () => {}) {
   _typeMap = null
   _blacklist = null
 
-  // 1. Find root Drive folder
-  const rows = await db.exec(`SELECT value FROM settings WHERE key = 'root_drive_folder'`)
-  const masterFolderName = rows.length ? JSON.parse(rows[0].value) : 'The Vintage Ties 2021'
+  // 1. Find the song library folder in Drive
+  const rows = await db.exec(`SELECT value FROM settings WHERE key = 'library_drive_folder'`)
+  const libraryFolderPath = rows.length ? JSON.parse(rows[0].value) : ''
 
-  onProgress(`Finding "${masterFolderName}" in Google Drive…`, 0, 0)
-  const masterFolder = await findMasterFolder(masterFolderName)
+  onProgress(`Finding "${libraryFolderPath}" in Google Drive…`, 0, 0)
+  const masterFolderId = await walkFolderPath(libraryFolderPath)
 
-  if (!masterFolder) {
-    throw new Error(`Could not find folder "${masterFolderName}" in Google Drive. Make sure it has been shared with your account.`)
+  if (!masterFolderId) {
+    throw new Error(`Could not find folder "${libraryFolderPath}" in Google Drive. Make sure it has been shared with your account.`)
   }
 
   // 2. List all subfolders
   onProgress('Listing song folders…', 0, 0)
-  const subfolders = await listSubfolders(masterFolder.id)
+  const subfolders = await listSubfolders(masterFolderId)
 
   const stats = { added: 0, updated: 0, skipped: 0, inactive: 0, warnings: [] }
   const seenIds = new Set()

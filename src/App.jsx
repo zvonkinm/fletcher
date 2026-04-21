@@ -1,10 +1,10 @@
 // src/App.jsx
 import React, { useEffect, useState } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, Link } from 'react-router-dom'
 import { initGsi, initGapi, triggerSignIn, signOut, isSignedIn,
          handleRedirectCallback, restoreSession } from './auth/google.js'
 import { db } from './db/index.js'
-import { loadSettingsFromDrive, loadGigsFromDrive, loadMusiciansFromDrive } from './drive/sync-gigs.js'
+import { loadSettingsFromDrive, loadGigsFromDrive, loadMusiciansFromDrive, isRootFolderConfigured } from './drive/sync-gigs.js'
 import NavBar from './components/NavBar.jsx'
 import Repertoire from './views/Repertoire.jsx'
 import Gigs from './views/Gigs.jsx'
@@ -29,9 +29,14 @@ export default function App() {
   //   'idle'      — no session found, show sign-in screen
   //   'signed-in' — token available, show main app
   //   'error'     — unrecoverable error, show error card
-  const [authState, setAuthState] = useState('loading')
-  const [dbReady, setDbReady]     = useState(false)
-  const [error, setError]         = useState(null)
+  const [authState, setAuthState]         = useState('loading')
+  const [dbReady, setDbReady]             = useState(false)
+  const [error, setError]                 = useState(null)
+  // rootFolderValid: false when the configured root Drive folder wasn't found
+  // during sign-in.  Gigs and musicians are NOT synced in that case to prevent
+  // local (seeded) data from overwriting real Drive data when the user later
+  // fixes the folder path in Settings.
+  const [rootFolderValid, setRootFolderValid] = useState(true)
 
   // ── Initialise SQLite DB ───────────────────────────────────────────────
   useEffect(() => {
@@ -50,16 +55,30 @@ export default function App() {
     if (authInitStarted) return
     authInitStarted = true
 
+    // Load gigs and musicians from Drive, but only if the configured root
+    // folder actually exists in Drive.  If it doesn't, we skip sync entirely
+    // so that seeded / stale local data can never overwrite real Drive data
+    // when the user later corrects the folder path in Settings.
+    async function syncGigsAndMusicians() {
+      const valid = await isRootFolderConfigured()
+      if (!valid) {
+        setRootFolderValid(false)
+        console.warn('[App] Root Drive folder not found — gig/musician sync skipped')
+        return
+      }
+      await loadGigsFromDrive()       // non-fatal on failure
+      await loadMusiciansFromDrive()  // non-fatal on failure
+    }
+
     async function initAuth() {
       await gsiReady  // wait for GSI script to load
 
       // Case 1: returning from Google's sign-in redirect (?code=... in URL)
       const fromRedirect = await handleRedirectCallback()
       if (fromRedirect) {
-        await initGapi()          // load Drive API client now that we have a token
+        await initGapi()
         await loadSettingsFromDrive()   // restore persisted settings (export path, etc.)
-        await loadGigsFromDrive()       // restore persisted gigs; non-fatal on failure
-        await loadMusiciansFromDrive()  // restore persisted musicians; non-fatal on failure
+        await syncGigsAndMusicians()
         setAuthState('signed-in')
         return
       }
@@ -68,8 +87,7 @@ export default function App() {
       if (restoreSession()) {
         await initGapi()
         await loadSettingsFromDrive()   // restore persisted settings (export path, etc.)
-        await loadGigsFromDrive()       // restore persisted gigs; non-fatal on failure
-        await loadMusiciansFromDrive()  // restore persisted musicians; non-fatal on failure
+        await syncGigsAndMusicians()
         setAuthState('signed-in')
         return
       }
@@ -148,6 +166,18 @@ export default function App() {
   return (
     <div className={styles.app}>
       <NavBar onSignOut={handleSignOut} />
+      {/* Shown when the configured root Drive folder wasn't found at sign-in.
+          Gigs and musicians were NOT synced from Drive in this state — the user
+          must set the correct folder path in Settings before sync runs. */}
+      {!rootFolderValid && (
+        <div className={styles.rootFolderWarning}>
+          <span>
+            Root Drive folder not found. Go to{' '}
+            <Link to="/settings" className={styles.rootFolderWarningLink}>Settings</Link>
+            {' '}to set the correct folder path — gigs and musicians have not been synced yet.
+          </span>
+        </div>
+      )}
       <main className={styles.main}>
         <Routes>
           {/* Default route redirects to Gigs */}

@@ -194,6 +194,46 @@
   margin-top: 4px;
 }
 
+/* ── Sync confirmation row ────────────────────────────────────────────────── */
+/* Shown after saving a new root folder when Drive already has gigs.info there. */
+
+.syncConfirmRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 10px 14px;
+  background: #FFF8E1;
+  border: 1px solid #F6C94E;
+  border-radius: 8px;
+}
+
+.syncConfirmMsg {
+  font-size: 13px;
+  color: #7A5C00;
+  font-weight: 600;
+  flex: 1;
+}
+
+/* Secondary button — used for "Keep local data" (destructive choice) */
+.syncAltBtn {
+  background: #fff;
+  color: #1B2B4B;
+  border: 1px solid #D0D9E8;
+  border-radius: 8px;
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: Arial, sans-serif;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.syncAltBtn:hover {
+  background: #EFF2F7;
+  border-color: #1B2B4B;
+}
+
 /* ── Muted text ───────────────────────────────────────────────────────────── */
 
 .muted {

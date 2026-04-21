@@ -4,7 +4,7 @@
 // Each musician has: name, parts (subset of active_parts), locked.
 // Changes are saved to SQLite immediately and synced to Drive fire-and-forget.
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { db } from '../db/index.js'
 import { saveMusiciansToDrive } from '../drive/sync-gigs.js'
 import styles from './Personnel.module.css'
@@ -272,6 +272,7 @@ export default function Personnel() {
   const [musicians, setMusicians] = useState(null)
   const [activeParts, setActiveParts] = useState([])
   const [filter, setFilter]       = useState(null)   // null = All, or part name
+  const [locFilter, setLocFilter] = useState(null)   // null = All, or "City, State" string
   const [showAdd, setShowAdd]     = useState(false)
 
   const loadMusicians = useCallback(async () => {
@@ -325,9 +326,24 @@ export default function Personnel() {
 
   // ── Derived list ──────────────────────────────────────────────────────
 
-  const filtered = musicians?.filter(m =>
-    !filter || JSON.parse(m.parts || '[]').includes(filter)
-  ) ?? []
+  // Sorted unique "City, State" strings from all musicians that have a location set
+  const uniqueLocations = useMemo(() => {
+    if (!musicians) return []
+    const locs = new Set()
+    for (const m of musicians) {
+      if (m.city || m.state) locs.add([m.city, m.state].filter(Boolean).join(', '))
+    }
+    return [...locs].sort()
+  }, [musicians])
+
+  const filtered = musicians?.filter(m => {
+    if (filter && !JSON.parse(m.parts || '[]').includes(filter)) return false
+    if (locFilter) {
+      const mLoc = [m.city, m.state].filter(Boolean).join(', ')
+      if (mLoc !== locFilter) return false
+    }
+    return true
+  }) ?? []
 
   // ── Render ────────────────────────────────────────────────────────────
 
@@ -342,7 +358,7 @@ export default function Personnel() {
         </button>
       </div>
 
-      {/* ── Filter chips ──────────────────────────────────────────── */}
+      {/* ── Instrument filter chips ───────────────────────────────── */}
       {activeParts.length > 0 && (
         <div className={styles.filterRow}>
           <button
@@ -358,6 +374,27 @@ export default function Personnel() {
               onClick={() => setFilter(f => f === part ? null : part)}
             >
               {part}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Location filter chips (only shown when there are ≥2 distinct locations) ── */}
+      {uniqueLocations.length >= 2 && (
+        <div className={styles.filterRow}>
+          <button
+            className={`${styles.chip} ${!locFilter ? styles.chipActive : ''}`}
+            onClick={() => setLocFilter(null)}
+          >
+            All locations
+          </button>
+          {uniqueLocations.map(loc => (
+            <button
+              key={loc}
+              className={`${styles.chip} ${locFilter === loc ? styles.chipActive : ''}`}
+              onClick={() => setLocFilter(l => l === loc ? null : loc)}
+            >
+              {loc}
             </button>
           ))}
         </div>

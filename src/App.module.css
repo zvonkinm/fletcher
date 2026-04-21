@@ -107,3 +107,24 @@
   color: #4A5568;
   font-family: Arial, sans-serif;
 }
+
+/* ── Root folder warning banner ── */
+/* Shown when the configured Drive root folder didn't resolve at sign-in. */
+
+.rootFolderWarning {
+  background: #FFF8E1;
+  border-bottom: 1px solid #F6C94E;
+  color: #7A5C00;
+  font-family: Arial, sans-serif;
+  font-size: 13px;
+  padding: 10px 24px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rootFolderWarningLink {
+  color: #1B2B4B;
+  font-weight: 700;
+  text-underline-offset: 2px;
+}

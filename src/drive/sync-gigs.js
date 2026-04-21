@@ -60,18 +60,18 @@ function driveEscape(str) {
   return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
 }
 
-// Walk the user's configured root_drive_folder path and return the folder ID.
-// Returns null if the setting is missing or the root folder isn't found in Drive.
-async function resolveRootFolder() {
-  const rows = await db.exec(`SELECT value FROM settings WHERE key = 'root_drive_folder'`)
-  if (rows.length === 0) return null
-  const folderPath = JSON.parse(rows[0].value)
-  if (!folderPath) return null
-
-  const segments = folderPath.split('/').map(s => s.trim()).filter(Boolean)
+// Walk a slash-separated folder path in Drive and return the final folder ID,
+// or null if any segment is missing.  Shared by resolveRootFolder,
+// checkRootFolderExists, and checkSyncFilesExist so path-walking logic
+// lives in exactly one place.
+//
+// Example: "The Vintage Ties 2021/VTJB" → walks root → "The Vintage Ties 2021"
+//          → then its child "VTJB" → returns that child's ID.
+export async function walkFolderPath(folderPath) {
+  const segments = (folderPath || '').split('/').map(s => s.trim()).filter(Boolean)
   if (segments.length === 0) return null
 
-  // The first segment must already exist at the Drive root.
+  // Locate the first segment at the Drive root level.
   const rootResp = await gapiExec(() => window.gapi.client.drive.files.list({
     q: `name = '${driveEscape(segments[0])}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
     fields: 'files(id)',
@@ -80,6 +80,7 @@ async function resolveRootFolder() {
   if (!rootResp.result.files?.length) return null
   let current = rootResp.result.files[0]
 
+  // Walk each subsequent segment as a child of the previous folder.
   for (const seg of segments.slice(1)) {
     const resp = await gapiExec(() => window.gapi.client.drive.files.list({
       q: `name = '${driveEscape(seg)}' and '${current.id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
@@ -92,33 +93,69 @@ async function resolveRootFolder() {
   return current.id
 }
 
+// Walk the user's configured root_drive_folder path and return the folder ID.
+// Returns null if the setting is missing or the root folder isn't found in Drive.
+async function resolveRootFolder() {
+  const rows = await db.exec(`SELECT value FROM settings WHERE key = 'root_drive_folder'`)
+  if (rows.length === 0) return null
+  const folderPath = JSON.parse(rows[0].value)
+  if (!folderPath) return null
+  return walkFolderPath(folderPath)
+}
+
 /**
  * Walk `folderPath` in Drive and return true if every segment exists.
  * Used to validate a new root folder value before saving it.
  * Throws if Drive is unreachable (auth error, network, etc.).
  */
 export async function checkRootFolderExists(folderPath) {
-  const segments = (folderPath || '').split('/').map(s => s.trim()).filter(Boolean)
-  if (segments.length === 0) return false
+  const id = await walkFolderPath(folderPath)
+  return id !== null
+}
 
-  const rootResp = await gapiExec(() => window.gapi.client.drive.files.list({
-    q: `name = '${driveEscape(segments[0])}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
-    fields: 'files(id)',
-    pageSize: 1,
-  }))
-  if (!rootResp.result.files?.length) return false
-  let current = rootResp.result.files[0]
+/**
+ * Return true if the currently configured root_drive_folder resolves to a
+ * real Drive folder.  Returns false if the folder is missing or Drive is
+ * unavailable (errors are swallowed).
+ * Called by App.jsx after sign-in to decide whether to proceed with sync.
+ */
+export async function isRootFolderConfigured() {
+  try {
+    await db.ready
+    const id = await resolveRootFolder()
+    return id !== null
+  } catch {
+    return false
+  }
+}
 
-  for (const seg of segments.slice(1)) {
-    const resp = await gapiExec(() => window.gapi.client.drive.files.list({
-      q: `name = '${driveEscape(seg)}' and '${current.id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+/**
+ * Return true if `gigs.info` already exists inside the `Fletcher Sync`
+ * sub-folder of `folderPath`.  Used by Settings before saving a new root
+ * folder: if Drive already has sync data there we should load from Drive
+ * instead of overwriting it with whatever is in the local DB.
+ * Returns false on any error (Drive down, folder missing, etc.).
+ */
+export async function checkSyncFilesExist(folderPath) {
+  try {
+    const rootId = await walkFolderPath(folderPath)
+    if (!rootId) return false
+
+    // Look for the Fletcher Sync sub-folder inside the resolved root.
+    const syncResp = await gapiExec(() => window.gapi.client.drive.files.list({
+      q: `name = '${driveEscape(SYNC_FOLDER_NAME)}' and '${rootId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
       fields: 'files(id)',
       pageSize: 1,
     }))
-    if (!resp.result.files?.length) return false
-    current = resp.result.files[0]
+    if (!syncResp.result.files?.length) return false
+    const syncFolderId = syncResp.result.files[0].id
+
+    // gigs.info is the canonical indicator that sync data exists.
+    const gigsId = await findFile(GIGS_FILE_NAME, syncFolderId)
+    return gigsId !== null
+  } catch {
+    return false
   }
-  return true
 }
 
 // Find the `Fletcher Sync` folder inside the root Drive folder.
