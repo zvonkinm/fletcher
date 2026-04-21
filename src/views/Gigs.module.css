@@ -860,6 +860,19 @@ select.formInput {
   box-shadow: none;
 }
 
+/* Entry is part of the active paint selection */
+.setEntrySelected {
+  background: #fdf6e3;
+  border-color: #C9A84C;
+  box-shadow: 0 0 0 1px #C9A84C;
+}
+
+/* Selected entries that are ghosting during a group drag (not the primary dragged element) */
+.setEntryGroupDragging {
+  opacity: 0.35;
+  box-shadow: none;
+}
+
 /* ⠿ grip icon */
 .dragHandle {
   color: #C0CBD8;

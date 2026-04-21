@@ -193,9 +193,9 @@ function parseLineup(raw, parts) {
 //   • OR their state matches the gig's state (when the gig has a state)
 //     AND their city matches the gig's city (when the gig has a city)
 function isLocalMusician(musician, gigCity, gigState) {
-  if (!musician.city && !musician.state) return true   // unknown = local
-  if (gigState && musician.state !== gigState) return false
-  if (gigCity  && musician.city  !== gigCity)  return false
+  if (!musician.city && !musician.state) return true           // no location → treat as local everywhere
+  if (gigState && musician.state && musician.state !== gigState) return false  // state mismatch
+  if (gigCity  && musician.city  && musician.city  !== gigCity)  return false  // city mismatch
   return true
 }
 
@@ -856,7 +856,7 @@ function DraggableSong({ song, isUsed, isLocked, onAdd }) {
 //   isLocked           — when true, drag is disabled and the remove button is hidden
 //   onRemove(entryId)  — called when the × button is clicked
 //   onRenameWriteIn(entryId, newTitle) — called when a write-in title is committed
-function SetEntry({ entry, song, position, isLocked, onRemove, onRenameWriteIn }) {
+function SetEntry({ entry, song, position, isLocked, isSelected, isMultiDragActive, onEntryClick, onRemove, onRenameWriteIn }) {
   const {
     attributes, listeners, setNodeRef,
     transform, transition, isDragging,
@@ -865,6 +865,10 @@ function SetEntry({ entry, song, position, isLocked, onRemove, onRenameWriteIn }
     data:     { type: 'entry', entryId: entry.entryId },
     disabled: isLocked,  // dnd-kit won't activate drag when the gig is locked
   })
+
+  // True for every selected entry that isn't the one being physically dragged —
+  // they ghost so the user can see the whole group is moving.
+  const isGroupDragging = isMultiDragActive && isSelected && !isDragging
 
   // Write-in local state: inline title editing (analogous to set rename)
   const wi = isWriteIn(entry.songId)
@@ -894,12 +898,25 @@ function SetEntry({ entry, song, position, isLocked, onRemove, onRenameWriteIn }
     <div
       ref={setNodeRef}
       style={style}
-      className={`${styles.setEntry} ${isDragging ? styles.setEntryDragging : ''}`}
+      data-entry-id={entry.entryId}
+      className={[
+        styles.setEntry,
+        isDragging      ? styles.setEntryDragging     : '',
+        isGroupDragging ? styles.setEntryGroupDragging : '',
+        isSelected && !isDragging && !isGroupDragging ? styles.setEntrySelected : '',
+      ].filter(Boolean).join(' ')}
+      onClick={e => {
+        // Route clicks on the row body to the selection handler; ignore drags,
+        // interactive elements, and the drag handle.
+        if (e.target.closest('button, input, [data-no-paint]')) return
+        if (onEntryClick) onEntryClick(entry.entryId, e)
+      }}
     >
       {/* Drag handle — hidden when locked so the row looks purely read-only */}
       {!isLocked && (
         <span
           className={styles.dragHandle}
+          data-no-paint
           {...listeners}
           {...attributes}
           title="Drag to reorder or move to another set"
@@ -930,9 +947,8 @@ function SetEntry({ entry, song, position, isLocked, onRemove, onRenameWriteIn }
           ) : (
             <span
               className={styles.entryTitle}
-              onClick={isLocked ? undefined : () => setWiEditing(true)}
-              style={isLocked ? { cursor: 'default' } : { cursor: 'text' }}
-              title={isLocked ? undefined : 'Click to rename'}
+              onDoubleClick={isLocked ? undefined : e => { e.stopPropagation(); setWiEditing(true) }}
+              title={isLocked ? undefined : 'Double-click to rename'}
             >
               {getWriteInTitle(entry.songId) || 'Write-in'}
             </span>
@@ -979,7 +995,7 @@ function SetEntry({ entry, song, position, isLocked, onRemove, onRenameWriteIn }
 //   onDelete(setId)
 //   onAddWriteIn(setId)
 //   onRenameWriteIn(setId, entryId, newTitle)
-function SetColumn({ set, songMap, isSongDragging, isLocked, onRename, onRemoveEntry, onDelete, onAddWriteIn, onRenameWriteIn }) {
+function SetColumn({ set, songMap, isSongDragging, isLocked, selectedEntryIds, onEntryClick, isMultiDragActive, onRename, onRemoveEntry, onDelete, onAddWriteIn, onRenameWriteIn }) {
   // When locked, dropping is still registered by useDroppable but handleDragEnd
   // in GigEditor checks isLocked before mutating state, so drops are no-ops.
   const { setNodeRef, isOver } = useDroppable({ id: 'set-col-' + set.id })
@@ -1070,6 +1086,9 @@ function SetColumn({ set, songMap, isSongDragging, isLocked, onRename, onRemoveE
               song={isWriteIn(entry.songId) ? null : (songMap.get(entry.songId) ?? null)}
               position={i + 1}
               isLocked={isLocked}
+              isSelected={selectedEntryIds.has(entry.entryId)}
+              isMultiDragActive={isMultiDragActive}
+              onEntryClick={(entryId, e) => onEntryClick(entryId, set.id, e)}
               onRemove={entryId => onRemoveEntry(set.id, entryId)}
               onRenameWriteIn={(entryId, newTitle) => onRenameWriteIn(set.id, entryId, newTitle)}
             />
@@ -1633,6 +1652,14 @@ function GigEditor({ gigId }) {
   const [exportStage, setExportStage] = useState({ label: '', done: 0, total: 0 })
   // repoVisible: controls whether the left Repertoire panel is shown
   const [repoVisible, setRepoVisible]   = useState(true)
+  // Multi-selection: entries painted by holding mouse + sweeping across rows
+  // Only entries within one set can be selected at a time.
+  const [selectedEntryIds, setSelectedEntryIds] = useState(new Set())
+  const [selectionSetId,   setSelectionSetId]   = useState(null)
+  // Stable empty set so columns outside the selection don't re-render on every selection change
+  const emptySet = useMemo(() => new Set(), [])
+  // Anchor entry for Shift+click range selection — stored in a ref so it doesn't trigger renders
+  const lastClickRef = useRef(null)
 
   // loadedRef prevents auto-save effects from firing during the initial load
   const loadedRef          = useRef(false)
@@ -1812,20 +1839,77 @@ function GigEditor({ gigId }) {
   // ── DnD event handlers ────────────────────────────────────────────────
 
   function handleDragStart({ active }) {
-    setActiveDrag({
-      type: active.data.current?.type,
-      id:   active.id,
-      data: active.data.current,
-    })
+    const type = active.data.current?.type
+    // When the user grabs a selected entry and 2+ entries are selected, treat
+    // this as a group drag so handleDragEnd can move the whole selection at once.
+    if (type === 'entry' && selectedEntryIds.has(active.id) && selectedEntryIds.size > 1) {
+      setActiveDrag({
+        type:  'multi-entry',
+        id:    active.id,
+        data:  active.data.current,
+        ids:   new Set(selectedEntryIds),  // snapshot — paint events won't affect the drag
+        setId: selectionSetId,
+      })
+    } else {
+      setActiveDrag({
+        type: type,
+        id:   active.id,
+        data: active.data.current,
+      })
+      // Dragging a single non-selected entry clears the paint selection
+      if (type === 'entry') clearSelection()
+    }
   }
 
   function handleDragEnd({ active, over }) {
+    // Capture before clearing — setActiveDrag(null) schedules a re-render but
+    // doesn't change the local variable within this synchronous call.
+    const currentDrag = activeDrag
     setActiveDrag(null)
     if (!over) return
     // Safety guard: locked gigs must not be mutated even if drag somehow fires
     if (isLocked) return
 
-    const type = active.data.current?.type
+    // Use our own activeDrag type (may be 'multi-entry') rather than dnd-kit's
+    const type = currentDrag?.type ?? active.data.current?.type
+
+    // ── Move the entire multi-selection to another set ─────────────────
+    if (type === 'multi-entry') {
+      const fromSetId = currentDrag.setId
+      let toSetId
+      let toEntryId = null
+      if (typeof over.id === 'string' && over.id.startsWith('set-col-')) {
+        toSetId = over.id.slice('set-col-'.length)
+      } else {
+        toSetId   = findEntrySetId(sets, over.id)
+        toEntryId = String(over.id)
+      }
+      if (!toSetId) return
+
+      const idsToMove = currentDrag.ids
+      setSets(prev => {
+        const sourceSet = prev.find(s => s.id === fromSetId)
+        if (!sourceSet) return prev
+        // Preserve the relative order they had in the source set
+        const entriesToMove = sourceSet.entries.filter(e => idsToMove.has(e.entryId))
+        return prev.map(set => {
+          if (set.id === fromSetId) {
+            return { ...set, entries: set.entries.filter(e => !idsToMove.has(e.entryId)) }
+          }
+          if (set.id === toSetId) {
+            const newEntries = [...set.entries]
+            const insertAt = toEntryId
+              ? newEntries.findIndex(e => e.entryId === toEntryId)
+              : -1
+            newEntries.splice(insertAt < 0 ? newEntries.length : insertAt, 0, ...entriesToMove)
+            return { ...set, entries: newEntries }
+          }
+          return set
+        })
+      })
+      clearSelection()
+      return
+    }
 
     // ── Drop a repertoire song onto a set ─────────────────────────────
     if (type === 'song') {
@@ -1909,6 +1993,60 @@ function GigEditor({ gigId }) {
 
   function handleDragCancel() {
     setActiveDrag(null)
+  }
+
+  // ── Entry selection ────────────────────────────────────────────────────────
+  // Handles click / Ctrl+click / Shift+click on song row bodies.
+  //   Plain click    — select only this entry (replaces any prior selection)
+  //   Ctrl/Cmd+click — toggle this entry; if from a different set, start fresh
+  //   Shift+click    — range from the last clicked entry to this one (same set only)
+  function handleEntryClick(entryId, setId, e) {
+    if (isLocked) return
+
+    if (e.ctrlKey || e.metaKey) {
+      // Toggle one entry; switching sets resets to just the clicked entry
+      if (selectionSetId && selectionSetId !== setId) {
+        setSelectionSetId(setId)
+        setSelectedEntryIds(new Set([entryId]))
+      } else {
+        setSelectionSetId(setId)
+        setSelectedEntryIds(prev => {
+          const next = new Set(prev)
+          if (next.has(entryId)) next.delete(entryId)
+          else                   next.add(entryId)
+          return next
+        })
+      }
+      lastClickRef.current = { entryId, setId }
+
+    } else if (e.shiftKey && lastClickRef.current?.setId === setId) {
+      // Range: select every entry between the anchor and this one
+      const targetSet = sets.find(s => s.id === setId)
+      if (targetSet) {
+        const ids     = targetSet.entries.map(en => en.entryId)
+        const fromIdx = ids.indexOf(lastClickRef.current.entryId)
+        const toIdx   = ids.indexOf(entryId)
+        if (fromIdx >= 0 && toIdx >= 0) {
+          const lo = Math.min(fromIdx, toIdx)
+          const hi = Math.max(fromIdx, toIdx)
+          setSelectionSetId(setId)
+          setSelectedEntryIds(new Set(ids.slice(lo, hi + 1)))
+        }
+      }
+      // Shift+click doesn't update the anchor — the same anchor stays for further range ops
+
+    } else {
+      // Plain click: select only this entry
+      setSelectionSetId(setId)
+      setSelectedEntryIds(new Set([entryId]))
+      lastClickRef.current = { entryId, setId }
+    }
+  }
+
+  function clearSelection() {
+    setSelectedEntryIds(new Set())
+    setSelectionSetId(null)
+    lastClickRef.current = null
   }
 
   // ── Set mutations ─────────────────────────────────────────────────────
@@ -2436,7 +2574,11 @@ function GigEditor({ gigId }) {
           </div>
 
           {/* ── Right area: set columns ────────────────────────────── */}
-          <div className={styles.setsArea}>
+          {/* onPointerDown on the background clears any active paint selection */}
+          <div
+            className={styles.setsArea}
+            onPointerDown={e => { if (e.target === e.currentTarget) clearSelection() }}
+          >
             {sets.map(set => (
               <SetColumn
                 key={set.id}
@@ -2444,6 +2586,9 @@ function GigEditor({ gigId }) {
                 songMap={songMap}
                 isSongDragging={activeDrag?.type === 'song'}
                 isLocked={isLocked}
+                selectedEntryIds={selectionSetId === set.id ? selectedEntryIds : emptySet}
+                onEntryClick={handleEntryClick}
+                isMultiDragActive={activeDrag?.type === 'multi-entry'}
                 onRename={renameSet}
                 onRemoveEntry={removeEntryFromSet}
                 onDelete={deleteSet}
@@ -2464,7 +2609,14 @@ function GigEditor({ gigId }) {
         {/* DragOverlay renders via a portal at document.body level so it
             floats above all other elements regardless of overflow:hidden. */}
         <DragOverlay>
-          {draggedSong ? (
+          {activeDrag?.type === 'multi-entry' ? (
+            // Group drag: show the count instead of a single song title
+            <div className={styles.dragOverlay}>
+              <span className={styles.dragOverlayTitle}>
+                {activeDrag.ids.size} songs
+              </span>
+            </div>
+          ) : draggedSong ? (
             <div className={styles.dragOverlay}>
               <IndexBadge
                 idx={draggedSong.idx}
