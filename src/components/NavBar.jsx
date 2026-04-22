@@ -48,6 +48,14 @@ export default function NavBar({ onSignOut }) {
         >
           Settings
         </NavLink>
+        <NavLink
+          to="/import"
+          className={({ isActive }) =>
+            isActive ? `${styles.link} ${styles.linkActive}` : styles.link
+          }
+        >
+          Import
+        </NavLink>
       </div>
 
       <button className={styles.signOut} onClick={onSignOut}>

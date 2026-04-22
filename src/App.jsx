@@ -10,6 +10,7 @@ import Repertoire from './views/Repertoire.jsx'
 import Gigs from './views/Gigs.jsx'
 import Personnel from './views/Personnel.jsx'
 import Settings from './views/Settings.jsx'
+import Import from './views/Import.jsx'
 import styles from './App.module.css'
 import logoUrl from './assets/logo.js'
 
@@ -186,6 +187,7 @@ export default function App() {
           <Route path="/gigs/:gigId?" element={<Gigs />} />
           <Route path="/personnel" element={<Personnel />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/import" element={<Import />} />
         </Routes>
       </main>
     </div>

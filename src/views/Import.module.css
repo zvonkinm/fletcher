@@ -1,0 +1,241 @@
+/* src/views/Import.module.css */
+
+.page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 32px 24px 64px;
+  font-family: Arial, sans-serif;
+}
+
+.pageTitle {
+  font-size: 22px;
+  color: #1B2B4B;
+  margin: 0 0 6px;
+}
+
+.pageDesc {
+  font-size: 14px;
+  color: #555;
+  margin: 0 0 32px;
+}
+
+/* ── Sections ──────────────────────────────────────────────────────────────── */
+
+.section {
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  padding: 24px 28px;
+  margin-bottom: 24px;
+}
+
+.sectionTitle {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1B2B4B;
+  margin: 0 0 10px;
+}
+
+.hint {
+  font-size: 13px;
+  color: #666;
+  margin: 0 0 18px;
+  line-height: 1.5;
+}
+
+/* ── File input ────────────────────────────────────────────────────────────── */
+
+.fileLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.fileLabelText {
+  font-size: 13px;
+  color: #1B2B4B;
+  font-weight: 600;
+}
+
+.fileInput {
+  font-size: 13px;
+  color: #333;
+}
+
+/* ── Error ─────────────────────────────────────────────────────────────────── */
+
+.errorMsg {
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: #c0392b;
+  background: #fdf0ef;
+  border: 1px solid #f5c6c2;
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+
+/* ── Preview ───────────────────────────────────────────────────────────────── */
+
+.preview {
+  margin-top: 20px;
+}
+
+.previewSummary {
+  font-size: 13px;
+  color: #333;
+  margin: 0 0 12px;
+}
+
+.warnCount {
+  color: #b7791f;
+}
+
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid #e0ddd6;
+  border-radius: 7px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.table thead th {
+  position: sticky;
+  top: 0;
+  background: #f5f2ec;
+  color: #1B2B4B;
+  font-weight: 700;
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid #d4cfc5;
+  white-space: nowrap;
+}
+
+.table tbody tr:nth-child(even) {
+  background: #faf9f6;
+}
+
+.table tbody tr:hover {
+  background: #f0ece2;
+}
+
+.table tbody td {
+  padding: 6px 10px;
+  border-bottom: 1px solid #ede9e0;
+  vertical-align: top;
+}
+
+.tdDate {
+  white-space: nowrap;
+  color: #555;
+}
+
+.tdBand {
+  color: #555;
+  font-size: 12px;
+}
+
+.tdLineup {
+  color: #444;
+  max-width: 260px;
+}
+
+.tdPay {
+  white-space: nowrap;
+  text-align: right;
+  color: #2d6a2d;
+  font-weight: 600;
+}
+
+/* ── Warnings ──────────────────────────────────────────────────────────────── */
+
+.warnings {
+  margin-top: 12px;
+  font-size: 12.5px;
+  color: #b7791f;
+}
+
+.warnings summary {
+  cursor: pointer;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.warnings ul {
+  margin: 4px 0 0 16px;
+  padding: 0;
+  list-style: disc;
+}
+
+.warnings li {
+  margin-bottom: 3px;
+}
+
+/* ── Actions ───────────────────────────────────────────────────────────────── */
+
+.actions {
+  margin-top: 16px;
+  display: flex;
+  gap: 10px;
+}
+
+.importBtn {
+  background: #1B2B4B;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 9px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.importBtn:hover:not(:disabled) {
+  background: #243d6e;
+}
+
+.importBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ── Result ────────────────────────────────────────────────────────────────── */
+
+.result {
+  background: #f0faf0;
+  border: 1px solid #b2dfb2;
+  border-radius: 7px;
+  padding: 14px 18px;
+  margin-top: 4px;
+}
+
+.resultLine {
+  font-size: 13.5px;
+  color: #1a5c1a;
+  margin: 0 0 5px;
+}
+
+.resultHint {
+  font-size: 12.5px;
+  color: #555;
+  margin: 10px 0 0;
+}
+
+/* ── Placeholder ───────────────────────────────────────────────────────────── */
+
+.placeholder {
+  font-size: 13px;
+  color: #999;
+  font-style: italic;
+  border: 1px dashed #ccc;
+  border-radius: 6px;
+  padding: 16px 18px;
+  text-align: center;
+}
