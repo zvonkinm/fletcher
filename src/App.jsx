@@ -11,6 +11,7 @@ import Gigs from './views/Gigs.jsx'
 import Personnel from './views/Personnel.jsx'
 import Settings from './views/Settings.jsx'
 import Import from './views/Import.jsx'
+import Stats from './views/Stats.jsx'
 import styles from './App.module.css'
 import logoUrl from './assets/logo.js'
 
@@ -188,6 +189,7 @@ export default function App() {
           <Route path="/personnel" element={<Personnel />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/import" element={<Import />} />
+          <Route path="/stats" element={<Stats />} />
         </Routes>
       </main>
     </div>

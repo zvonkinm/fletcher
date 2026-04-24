@@ -49,6 +49,14 @@ export default function NavBar({ onSignOut }) {
           Settings
         </NavLink>
         <NavLink
+          to="/stats"
+          className={({ isActive }) =>
+            isActive ? `${styles.link} ${styles.linkActive}` : styles.link
+          }
+        >
+          Stats
+        </NavLink>
+        <NavLink
           to="/import"
           className={({ isActive }) =>
             isActive ? `${styles.link} ${styles.linkActive}` : styles.link

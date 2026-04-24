@@ -82,6 +82,84 @@ function makeWriteInSongId(title) {
   return `wi:${Math.random().toString(36).slice(2, 8)}:${title}`
 }
 
+// ── Setlist text importer ───────────────────────────────────────────────────
+// Parses a tab-separated two-column setlist text into sections.
+//
+// Expected column layout per row:
+//   <idx>  <title>  <key>  <empty>  <idx>  <title>  <key>
+//
+// Non-numeric first-column values (e.g. "Backup") are treated as section
+// headers and start a new named set.  Blank lines are ignored.
+// Annotation suffixes like "* Ryan" or "*new" are stripped from titles.
+// Songs not found in the library become write-in entries.
+//
+// Returns [{ name, entries }] where each entry has
+//   { type: 'song'|'writein', songId?, title?, display }
+function parseSetlistText(text, songMap) {
+  // Build idx → preferred song (no key variant preferred over keyed variants)
+  const idxMap = new Map()
+  for (const song of songMap.values()) {
+    if (!idxMap.has(song.idx) || !song.key_variant) idxMap.set(song.idx, song)
+  }
+
+  const SONG_IDX_RE = /^(\d{4})(#[A-Za-z]+)?/
+
+  const sections  = []
+  let curName     = 'Set 1'
+  let curEntries  = []
+
+  function flush() {
+    if (curEntries.length > 0) {
+      sections.push({ name: curName, entries: curEntries })
+      curEntries = []
+    }
+  }
+
+  for (const rawLine of text.split('\n')) {
+    const cols     = rawLine.split('\t').map(c => c.trim())
+    const firstCol = cols[0] ?? ''
+
+    if (cols.every(c => !c)) continue  // blank line — skip
+
+    if (!SONG_IDX_RE.test(firstCol)) {
+      // Named section header (e.g. "Backup") — flush current, start new set
+      flush()
+      curName = firstCol || `Set ${sections.length + 1}`
+      continue
+    }
+
+    // Song row — process left (cols 0,1) and right (cols 4,5) columns
+    for (const [idxCol, titleCol] of [[0, 1], [4, 5]]) {
+      const rawId = cols[idxCol] ?? ''
+      if (!rawId) continue
+
+      const m = rawId.match(SONG_IDX_RE)
+      if (!m) continue
+
+      const idx     = m[1]
+      const keyHint = m[2]?.slice(1)  // strip leading #
+
+      // Strip annotation (e.g. "Title *Ryan" → "Title")
+      const rawTitle = (cols[titleCol] ?? '').replace(/\s*\*\S+$/, '').trim()
+
+      // Prefer exact idx#key match, then any song with matching idx
+      let song = null
+      if (keyHint) song = songMap.get(`${idx}#${keyHint}`) ?? null
+      if (!song)   song = idxMap.get(idx) ?? null
+
+      if (song) {
+        curEntries.push({ type: 'song', songId: song.id, display: `${idx} ${song.title}` })
+      } else {
+        const title = rawTitle || idx
+        curEntries.push({ type: 'writein', title, display: `${idx} ${rawTitle || '?'}` })
+      }
+    }
+  }
+
+  flush()
+  return sections
+}
+
 // Turns a gig name + ISO date into a URL-safe slug used as the gig's DB id.
 // Example: ("VTJB Highball", "2026-04-01") → "vtjb_highball_260401"
 function generateSlug(name, date) {
@@ -1652,6 +1730,9 @@ function GigEditor({ gigId }) {
   const [exportStage, setExportStage] = useState({ label: '', done: 0, total: 0 })
   // repoVisible: controls whether the left Repertoire panel is shown
   const [repoVisible, setRepoVisible]   = useState(true)
+  // import modal
+  const [showImport, setShowImport]     = useState(false)
+  const [importText, setImportText]     = useState('')
   // Multi-selection: entries painted by holding mouse + sweeping across rows
   // Only entries within one set can be selected at a time.
   const [selectedEntryIds, setSelectedEntryIds] = useState(new Set())
@@ -2224,6 +2305,42 @@ function GigEditor({ gigId }) {
     setExportDone(true)
   }
 
+  // ── Import helpers ────────────────────────────────────────────────────
+
+  // Parse the import textarea text whenever it changes
+  const parsedImport = useMemo(() => {
+    if (!importText.trim()) return null
+    const sections = parseSetlistText(importText, songMap)
+    return sections.length ? sections : null
+  }, [importText, songMap])
+
+  // Replace all current sets with the parsed result.
+  // Duplicate song IDs across sections are silently dropped (can't add a song twice).
+  function handleApplyImport() {
+    if (!parsedImport?.length) return
+    const seen = new Set()
+    const newSets = parsedImport
+      .map(section => ({
+        id:      newId(),
+        name:    section.name,
+        entries: section.entries
+          .filter(e => {
+            if (e.type !== 'song') return true  // write-ins always kept
+            if (seen.has(e.songId)) return false
+            seen.add(e.songId)
+            return true
+          })
+          .map(e => ({
+            entryId: newId(),
+            songId: e.type === 'song' ? e.songId : makeWriteInSongId(e.title),
+          })),
+      }))
+      .filter(s => s.entries.length > 0)
+    setSets(newSets)
+    setImportText('')
+    setShowImport(false)
+  }
+
   // ── Filtered left-panel songs ─────────────────────────────────────────
   const filteredSongs = useMemo(() => {
     if (!search) return songs
@@ -2513,6 +2630,60 @@ function GigEditor({ gigId }) {
         </div>
       )}
 
+      {/* ── Import from text modal ───────────────────────────────────── */}
+      {showImport && (
+        <div className={styles.modalOverlay} onClick={() => setShowImport(false)}>
+          <div className={styles.importPanel} onClick={e => e.stopPropagation()}>
+            <h3 className={styles.modalTitle}>Import setlist from text</h3>
+            <p className={styles.importHint}>
+              Paste a tab-separated setlist. Each row holds up to two songs (left and right columns).
+              A non-numeric row (e.g. "Backup") starts a new set with that name.
+              Songs not found in the library are added as write-ins.
+              <strong> This replaces the current setlist.</strong>
+            </p>
+            <textarea
+              className={styles.importTextarea}
+              value={importText}
+              onChange={e => setImportText(e.target.value)}
+              placeholder={'1004\tThere Ain\'t No Sweet Man\tAm\t\t3025\tNo Love No Nothin\'\tEb'}
+              rows={10}
+              autoFocus
+              spellCheck={false}
+            />
+            {parsedImport && (
+              <div className={styles.importPreview}>
+                {parsedImport.map((sec, i) => {
+                  const writeins = sec.entries.filter(e => e.type === 'writein').length
+                  return (
+                    <div key={i} className={styles.importPreviewRow}>
+                      <span className={styles.importPreviewName}>{sec.name}</span>
+                      <span className={styles.importPreviewCount}>
+                        {sec.entries.length} song{sec.entries.length !== 1 ? 's' : ''}
+                        {writeins > 0 && (
+                          <span className={styles.importPreviewWriteins}> · {writeins} not in library</span>
+                        )}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+            <div className={styles.formActions}>
+              <button className={styles.ghostBtn} onClick={() => { setShowImport(false); setImportText('') }}>
+                Cancel
+              </button>
+              <button
+                className={styles.primaryBtn}
+                onClick={handleApplyImport}
+                disabled={!parsedImport?.length}
+              >
+                Replace setlist
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Editor body: repertoire (left) + sets (right) ────────────── */}
       {/* DndContext must wrap BOTH the draggable sources (left panel) AND
           the droppable targets (right panel), plus the DragOverlay. */}
@@ -2596,11 +2767,16 @@ function GigEditor({ gigId }) {
                 onRenameWriteIn={renameWriteInEntry}
               />
             ))}
-            {/* Add Set button hidden when locked */}
+            {/* Add Set / Import buttons — hidden when locked */}
             {!isLocked && (
-              <button className={styles.addSetBtn} onClick={addSet}>
-                + Add Set
-              </button>
+              <>
+                <button className={styles.importTextBtn} onClick={() => setShowImport(true)}>
+                  Import text
+                </button>
+                <button className={styles.addSetBtn} onClick={addSet}>
+                  + Add Set
+                </button>
+              </>
             )}
           </div>
         </div>

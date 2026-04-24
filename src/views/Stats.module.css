@@ -1,0 +1,251 @@
+/* src/views/Stats.module.css */
+/* Styles for the Stats aggregation view. */
+
+/* ── Shared tokens ─────────────────────────────────────────────────────────── */
+/* Navy: #1B2B4B  |  Border: #D0D9E8  |  Bg: #F7F9FC  |  Muted: #A0AEC0      */
+
+.container {
+  max-width: 860px;
+  margin: 0 auto;
+  padding-bottom: 48px;
+}
+
+.muted {
+  color: #A0AEC0;
+  font-size: 13px;
+  font-family: Arial, sans-serif;
+}
+
+/* ── Page header ──────────────────────────────────────────────────────────── */
+
+.pageHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.heading {
+  margin: 0;
+  font-size: 22px;
+  color: #1B2B4B;
+  font-family: Arial, sans-serif;
+}
+
+.filterLabel {
+  font-size: 13px;
+  font-family: Arial, sans-serif;
+  color: #4A5568;
+}
+
+.filterSelect {
+  margin-left: 8px;
+  font-size: 13px;
+  padding: 5px 10px;
+  border: 1px solid #D0D9E8;
+  border-radius: 6px;
+  color: #1B2B4B;
+  font-family: Arial, sans-serif;
+  background: #fff;
+  cursor: pointer;
+  outline: none;
+}
+
+.filterSelect:focus {
+  border-color: #1B2B4B;
+}
+
+/* ── Summary cards ─────────────────────────────────────────────────────────── */
+
+.summaryRow {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 28px;
+  flex-wrap: wrap;
+}
+
+.summaryCard {
+  flex: 1;
+  min-width: 120px;
+  background: #F7F9FC;
+  border: 1px solid #D0D9E8;
+  border-radius: 10px;
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: Arial, sans-serif;
+}
+
+.summaryNum {
+  font-size: 28px;
+  font-weight: 700;
+  color: #1B2B4B;
+  line-height: 1;
+}
+
+.summaryLabel {
+  font-size: 12px;
+  color: #718096;
+  margin-top: 2px;
+}
+
+/* ── Section ───────────────────────────────────────────────────────────────── */
+
+.section {
+  margin-bottom: 32px;
+}
+
+.sectionTitle {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #1B2B4B;
+  font-family: Arial, sans-serif;
+}
+
+.sectionHint {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: #A0AEC0;
+  font-family: Arial, sans-serif;
+}
+
+/* ── Table ─────────────────────────────────────────────────────────────────── */
+
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid #D0D9E8;
+  border-radius: 10px;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: Arial, sans-serif;
+  font-size: 13px;
+}
+
+.th {
+  background: #F7F9FC;
+  color: #4A5568;
+  font-weight: 600;
+  font-size: 12px;
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #D0D9E8;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.thRight {
+  text-align: right;
+}
+
+.thSortable {
+  cursor: pointer;
+}
+
+.thSortable:hover {
+  color: #1B2B4B;
+  background: #EFF2F7;
+}
+
+.thActive {
+  color: #1B2B4B;
+  font-weight: 700;
+}
+
+.tr {
+  border-bottom: 1px solid #EEF1F6;
+}
+
+.tr:last-child {
+  border-bottom: none;
+}
+
+.tr:hover {
+  background: #F7F9FC;
+}
+
+/* ── Table cells ────────────────────────────────────────────────────────────── */
+
+.tdIdx {
+  padding: 7px 12px;
+  white-space: nowrap;
+  width: 1%;
+}
+
+.idxBadge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: monospace;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.tdTitle {
+  padding: 7px 12px;
+  color: #1B2B4B;
+  min-width: 180px;
+}
+
+.tdType {
+  padding: 7px 12px;
+  font-size: 11px;
+  color: #718096;
+  white-space: nowrap;
+}
+
+.tdMuted {
+  padding: 7px 12px;
+  color: #718096;
+  font-size: 12px;
+}
+
+.tdNum {
+  padding: 7px 12px;
+  text-align: right;
+  color: #4A5568;
+  white-space: nowrap;
+}
+
+.tdBold {
+  font-weight: 700;
+  color: #1B2B4B;
+}
+
+/* ── Percentage bar ─────────────────────────────────────────────────────────── */
+
+.pctCell {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  justify-content: flex-end;
+}
+
+.pctTrack {
+  width: 60px;
+  height: 6px;
+  background: #E8EDF4;
+  border-radius: 3px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.pctFill {
+  display: block;
+  height: 100%;
+  background: #1B2B4B;
+  border-radius: 3px;
+  transition: width 0.2s;
+}
+
+.pctNum {
+  font-size: 12px;
+  color: #4A5568;
+  min-width: 32px;
+  text-align: right;
+}
