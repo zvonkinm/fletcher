@@ -7,11 +7,13 @@
     <link rel="icon" type="image/svg+xml" href="/fletcher/favicon.svg" />
  
     <!--
-      COOP/COEP are set via vite.config.js in dev and via the GitHub Actions
-      deploy workflow + service worker in production. SharedArrayBuffer (needed
-      by SQLite WASM) requires both headers to be present.
+      COOP/COEP are set via vite.config.js dev-server headers in development.
+      In production (GitHub Pages) they are injected by the service worker below,
+      which intercepts every response and adds the two headers before the app sees them.
+      SharedArrayBuffer (needed by SQLite WASM) requires both headers.
     -->
- 
+    <script src="/fletcher/coi-serviceworker.js"></script>
+
     <!-- Google Identity Services -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
  
