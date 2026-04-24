@@ -52,12 +52,13 @@ if (typeof window === 'undefined') {
       .then(reg => {
         reg.addEventListener('updatefound', () => {
           reg.installing?.addEventListener('statechange', e => {
-            if (e.target.state === 'activated') location.reload()
+            if (e.target.state === 'activated') location.replace('/fletcher/')
           })
         })
-        // SW was already waiting (e.g. hard-refresh) — activate immediately
         if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' })
       })
-    navigator.serviceWorker.addEventListener('controllerchange', () => location.reload())
+    // Always reload to the base path so GitHub Pages never sees a sub-route
+    // URL like /fletcher/gigs that it can't serve as a file.
+    navigator.serviceWorker.addEventListener('controllerchange', () => location.replace('/fletcher/'))
   }
 }
