@@ -11,7 +11,7 @@
 //   3. handleRedirectCallback() exchanges the code + verifier for a token
 
 export const CLIENT_ID =
-  '1089043244006-3lm74io6nubokgkpv94uqg0kavo9s1ad.apps.googleusercontent.com'
+  '1089043244006-h9kskqft3tn80j49m2fgl2d5j19rgvrm.apps.googleusercontent.com'
 
 // Token exchange is handled by a Cloudflare Worker — the client secret
 // never appears in browser code or the GitHub repo.
