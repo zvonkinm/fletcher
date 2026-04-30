@@ -53,6 +53,150 @@
   height: 13px;
 }
 
+/* ── Filter bar ───────────────────────────────────────────────────────────── */
+
+.filterBar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+  font-family: Arial, sans-serif;
+}
+
+/* Row of year (or other) chips */
+.filterChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.filterChip {
+  padding: 4px 12px;
+  border: 1px solid #D0D9E8;
+  border-radius: 20px;
+  background: #F7F9FC;
+  color: #4A5568;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: Arial, sans-serif;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.13s, border-color 0.13s, color 0.13s;
+}
+
+.filterChip:hover {
+  border-color: #1B2B4B;
+  color: #1B2B4B;
+}
+
+.filterChipActive {
+  background: #1B2B4B;
+  border-color: #1B2B4B;
+  color: #fff;
+}
+
+.filterChipActive:hover {
+  background: #2a3f6b;
+  border-color: #2a3f6b;
+  color: #fff;
+}
+
+/* Row of dropdowns + text search */
+.filterControls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.filterSearch {
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid #D0D9E8;
+  border-radius: 6px;
+  background: #fff;
+  color: #4A5568;
+  font-size: 13px;
+  font-family: Arial, sans-serif;
+  min-width: 160px;
+}
+
+.filterSearch:focus {
+  outline: none;
+  border-color: #1B2B4B;
+}
+
+.filterSelect {
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid #D0D9E8;
+  border-radius: 6px;
+  background: #fff;
+  color: #4A5568;
+  font-size: 13px;
+  font-family: Arial, sans-serif;
+  cursor: pointer;
+}
+
+.filterSelect:focus {
+  outline: none;
+  border-color: #1B2B4B;
+}
+
+.filterLabel {
+  font-size: 12px;
+  color: #4A5568;
+  font-family: Arial, sans-serif;
+  white-space: nowrap;
+}
+
+.filterMoney {
+  height: 30px;
+  width: 72px;
+  padding: 0 8px;
+  border: 1px solid #D0D9E8;
+  border-radius: 6px;
+  background: #fff;
+  color: #4A5568;
+  font-size: 13px;
+  font-family: Arial, sans-serif;
+}
+
+.filterMoney:focus {
+  outline: none;
+  border-color: #1B2B4B;
+}
+
+.filterPayGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.filterSep {
+  font-size: 13px;
+  color: #A0AEC0;
+}
+
+.filterClearBtn {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid #D0D9E8;
+  border-radius: 6px;
+  background: #fff;
+  color: #4A5568;
+  font-size: 13px;
+  font-family: Arial, sans-serif;
+  cursor: pointer;
+}
+
+.filterClearBtn:hover {
+  background: #F7F9FC;
+  border-color: #1B2B4B;
+  color: #1B2B4B;
+}
+
 /* ── All-years summary bar ────────────────────────────────────────────────── */
 
 /* Full-width strip shown above the year groups when "Show financials" is on */

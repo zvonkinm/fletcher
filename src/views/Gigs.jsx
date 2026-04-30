@@ -361,20 +361,32 @@ function GigList() {
   const [showFinancials, setShowFinancials] = useState(false)
   // musicians is loaded once so card lineups can resolve id → name
   const [musicians, setMusicians] = useState([])
+  const [songs,     setSongs]     = useState([])
+
+  // ── Filters ────────────────────────────────────────────────────────────────
+  const [filterYear,     setFilterYear]     = useState('')
+  const [filterVenue,    setFilterVenue]    = useState('')
+  const [filterMusician, setFilterMusician] = useState('')
+  const [filterPart,     setFilterPart]     = useState('')
+  const [songSearch,     setSongSearch]     = useState('')
+  const [moneyMin,       setMoneyMin]       = useState('')
+  const [moneyMax,       setMoneyMax]       = useState('')
 
   const loadGigs = useCallback(async () => {
     try {
       // Load gigs and musicians in parallel; parts + lineup are needed for card display;
       // financials is needed for the per-year aggregate totals in the list header.
-      const [rows, musRows] = await Promise.all([
+      const [rows, musRows, songRows] = await Promise.all([
         db.exec(
           'SELECT id, name, band_name, date, time, end_time, venue, setlist, locked, parts, lineup, financials ' +
           'FROM gigs ORDER BY date DESC, name ASC'
         ),
         db.exec('SELECT id, name FROM musicians'),
+        db.exec('SELECT id, title FROM songs WHERE active = 1 AND blacklisted = 0'),
       ])
       setGigs(rows)
       setMusicians(musRows)
+      setSongs(songRows)
     } catch (err) {
       console.error('[Gigs] Failed to load gigs:', err)
     }
@@ -387,12 +399,84 @@ function GigList() {
     return m
   }, [musicians])
 
+  // id → title map for song-in-setlist search; also supports "1025#Am" → base "1025" lookup
+  const songTitleMap = useMemo(() => {
+    const m = new Map()
+    for (const s of songs) m.set(s.id, s.title)
+    return m
+  }, [songs])
+
+  // ── Filter option lists ────────────────────────────────────────────────────
+  const filterOptions = useMemo(() => {
+    if (!gigs) return { years: [], venues: [], musicianNames: [], parts: [] }
+    const years    = [...new Set(gigs.map(g => g.date?.slice(0, 4)).filter(Boolean))].sort().reverse()
+    const venues   = [...new Set(gigs.map(g => g.venue).filter(Boolean))].sort()
+    const musNames = [...new Set(musicians.map(m => m.name))].sort()
+    const partSet  = new Set()
+    for (const g of gigs) {
+      try { if (g.parts) JSON.parse(g.parts).forEach(p => partSet.add(p)) } catch {}
+    }
+    return { years, venues, musicianNames: musNames, parts: [...partSet].sort() }
+  }, [gigs, musicians])
+
+  const hasActiveFilter = !!(filterYear || filterVenue || filterMusician || filterPart || songSearch || moneyMin || moneyMax)
+
+  function clearFilters() {
+    setFilterYear(''); setFilterVenue(''); setFilterMusician('')
+    setFilterPart(''); setSongSearch(''); setMoneyMin(''); setMoneyMax('')
+  }
+
+  // Apply filters to the raw list before grouping
+  const filteredGigs = useMemo(() => {
+    if (!gigs) return null
+    if (!filterYear && !filterVenue && !filterMusician && !filterPart && !songSearch && moneyMin === '' && moneyMax === '') return gigs
+    const qLower = songSearch.trim().toLowerCase()
+    const minPay = moneyMin !== '' ? parseFloat(moneyMin) : null
+    const maxPay = moneyMax !== '' ? parseFloat(moneyMax) : null
+    return gigs.filter(gig => {
+      if (filterYear && (gig.date?.slice(0, 4) ?? '') !== filterYear) return false
+      if (filterVenue && gig.venue !== filterVenue) return false
+      if (filterMusician) {
+        try {
+          const lineupData  = gig.lineup ? JSON.parse(gig.lineup) : {}
+          const assignedIds = Object.values(lineupData).map(pl => pl.assigned).filter(Boolean)
+          if (!assignedIds.some(id => musicianMap.get(id) === filterMusician)) return false
+        } catch { return false }
+      }
+      if (filterPart) {
+        try {
+          const gigParts = gig.parts ? JSON.parse(gig.parts) : []
+          if (!gigParts.includes(filterPart)) return false
+        } catch { return false }
+      }
+      if (qLower) {
+        try {
+          const sets = JSON.parse(gig.setlist || '[]')
+          const ids  = typeof sets[0] === 'string' ? sets : sets.flatMap(s => s.song_ids || [])
+          const found = ids.some(sid => {
+            if (isWriteIn(sid)) return getWriteInTitle(sid).toLowerCase().includes(qLower)
+            const title = songTitleMap.get(sid) ?? songTitleMap.get(sid.split('#')[0])
+            return title?.toLowerCase().includes(qLower)
+          })
+          if (!found) return false
+        } catch { return false }
+      }
+      if (minPay !== null || maxPay !== null) {
+        const { totalPay, hasData } = computeGigTotals(gig.financials, gig.lineup)
+        if (!hasData) return false
+        if (minPay !== null && totalPay < minPay) return false
+        if (maxPay !== null && totalPay > maxPay) return false
+      }
+      return true
+    })
+  }, [gigs, filterYear, filterVenue, filterMusician, filterPart, songSearch, moneyMin, moneyMax, musicianMap, songTitleMap])
+
   // Group gigs by calendar year (gigs with no date go into a 'undated' bucket at the end).
   // Each group accumulates financial totals for the year header summary row.
   const yearGroups = useMemo(() => {
-    if (!gigs || gigs.length === 0) return []
+    if (!filteredGigs || filteredGigs.length === 0) return []
     const groupMap = new Map()
-    for (const gig of gigs) {
+    for (const gig of filteredGigs) {
       const year = gig.date ? gig.date.slice(0, 4) : null
       const key  = year ?? 'undated'
       if (!groupMap.has(key)) {
@@ -422,7 +506,7 @@ function GigList() {
       if (bandleaderPay !== null) { grp.bandleaderPay += bandleaderPay; grp.hasBandleaderPay = true }
     }
     return [...groupMap.values()]
-  }, [gigs])
+  }, [filteredGigs])
 
   // Aggregate totals across all years — used for the single "All Years" summary strip.
   const allYearsTotals = useMemo(() => {
@@ -479,6 +563,81 @@ function GigList() {
         </button>
       </div>
 
+      {/* Filter bar */}
+      {gigs && gigs.length > 0 && (
+        <div className={styles.filterBar}>
+
+          {/* Year chips — hidden when there's only one year */}
+          {filterOptions.years.length > 1 && (
+            <div className={styles.filterChips}>
+              <button
+                className={filterYear === '' ? `${styles.filterChip} ${styles.filterChipActive}` : styles.filterChip}
+                onClick={() => setFilterYear('')}
+              >All</button>
+              {filterOptions.years.map(y => (
+                <button
+                  key={y}
+                  className={filterYear === y ? `${styles.filterChip} ${styles.filterChipActive}` : styles.filterChip}
+                  onClick={() => setFilterYear(filterYear === y ? '' : y)}
+                >{y}</button>
+              ))}
+            </div>
+          )}
+
+          {/* Dropdowns + song search row */}
+          <div className={styles.filterControls}>
+            <input
+              type="text"
+              className={styles.filterSearch}
+              placeholder="Song in setlist…"
+              value={songSearch}
+              onChange={e => setSongSearch(e.target.value)}
+            />
+            {filterOptions.venues.length > 0 && (
+              <select className={styles.filterSelect} value={filterVenue} onChange={e => setFilterVenue(e.target.value)}>
+                <option value="">All venues</option>
+                {filterOptions.venues.map(v => <option key={v} value={v}>{v}</option>)}
+              </select>
+            )}
+            {filterOptions.musicianNames.length > 0 && (
+              <select className={styles.filterSelect} value={filterMusician} onChange={e => setFilterMusician(e.target.value)}>
+                <option value="">All musicians</option>
+                {filterOptions.musicianNames.map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+            )}
+            {filterOptions.parts.length > 0 && (
+              <select className={styles.filterSelect} value={filterPart} onChange={e => setFilterPart(e.target.value)}>
+                <option value="">All parts</option>
+                {filterOptions.parts.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+            )}
+            {allYearsTotals?.anyFinancials && (
+              <span className={styles.filterPayGroup}>
+                <span className={styles.filterLabel}>Pay</span>
+                <input
+                  type="number"
+                  className={styles.filterMoney}
+                  placeholder="min"
+                  value={moneyMin}
+                  onChange={e => setMoneyMin(e.target.value)}
+                />
+                <span className={styles.filterSep}>–</span>
+                <input
+                  type="number"
+                  className={styles.filterMoney}
+                  placeholder="max"
+                  value={moneyMax}
+                  onChange={e => setMoneyMax(e.target.value)}
+                />
+              </span>
+            )}
+            {hasActiveFilter && (
+              <button className={styles.filterClearBtn} onClick={clearFilters}>Clear</button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* All-years aggregate — shown only when financials checkbox is on */}
       {showFinancials && allYearsTotals?.anyFinancials && (
         <div className={styles.allYearsBar}>
@@ -518,8 +677,11 @@ function GigList() {
       {gigs?.length === 0 && !showForm && (
         <p className={styles.muted}>No gigs yet — click "+ New Gig" to create one.</p>
       )}
+      {filteredGigs?.length === 0 && gigs?.length > 0 && (
+        <p className={styles.muted}>No gigs match the current filters.</p>
+      )}
 
-      {gigs && gigs.length > 0 && (
+      {filteredGigs && filteredGigs.length > 0 && (
         <div className={styles.gigCards}>
           {yearGroups.map(group => (
             <div key={group.year ?? 'undated'} className={styles.yearGroup}>
