@@ -2,8 +2,9 @@
 /* Navy: #1B2B4B | Border: #D0D9E8 | Bg: #EFF2F7 | Muted: #A0AEC0 */
 
 .container {
-  max-width: 840px;
+  max-width: 1400px;
   margin: 0 auto;
+  padding: 0 20px;
   font-family: Arial, sans-serif;
 }
 
@@ -116,7 +117,7 @@
 .musicianList {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
 }
 
 /* ── Musician card ───────────────────────────────────────────────────────── */
@@ -124,42 +125,43 @@
 .card {
   background: #fff;
   border: 1px solid #D0D9E8;
-  border-radius: 10px;
-  padding: 12px 16px;
+  border-radius: 8px;
+  padding: 7px 16px;
   font-family: Arial, sans-serif;
-  transition: border-color 0.12s;
+  transition: border-color 0.12s, box-shadow 0.12s;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 16px;
 }
-.card:hover { border-color: #b0bdd0; }
+.card:hover { border-color: #1B2B4B; box-shadow: 0 2px 10px rgba(27,43,75,0.09); }
 .cardLocked { background: #F7F9FC; }
 
-.cardHeader {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  /* No bottom margin — location row has its own top margin */
+/* Left column: name */
+.cardMain {
+  flex: 0 0 200px;
+  min-width: 0;
 }
 
-/* Locked mode: plain text name, no flex-grow so parts can sit beside it */
 .cardName {
-  flex: 0 0 auto;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   color: #1B2B4B;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 200px;
+  display: block;
 }
 
-/* Edit mode: fixed-width input so parts still have room on the same line */
 .cardNameInput {
-  flex: 0 0 160px;
-  font-size: 15px;
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 14px;
   font-weight: 700;
   color: #1B2B4B;
   border: 1px solid #D0D9E8;
   border-radius: 6px;
-  padding: 4px 10px;
+  padding: 3px 8px;
   font-family: Arial, sans-serif;
   background: #fff;
   outline: none;
@@ -167,22 +169,31 @@
 }
 .cardNameInput:focus { border-color: #1B2B4B; }
 
-.cardActions {
+/* Center column: city + state */
+.cardLocation {
+  flex: 0 0 180px;
+  min-width: 0;
   display: flex;
-  align-items: center;
   gap: 6px;
-  flex-shrink: 0;
-  margin-left: auto; /* push to the right edge */
+  align-items: center;
 }
 
-/* ── Parts row (inline, sits between name and actions) ───────────────────── */
-
+/* Right column: instrument chips, fills remaining width */
 .partsRow {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   align-items: center;
-  flex: 1; /* fills remaining space between name and action buttons */
+}
+
+/* Actions pinned to far right */
+.cardActions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 /* Read-only chip (locked mode) */
@@ -315,19 +326,14 @@
   margin-top: 4px;
 }
 
-/* ── Musician location (city / state) ────────────────────────────────────── */
-
-.locationRow {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  margin-top: 5px;
-}
+/* ── Location (city / state) — inside .cardLocation ─────────────────────── */
 
 .locationLabel {
   font-size: 12px;
   color: #718096;
-  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .locationInput {
@@ -340,7 +346,7 @@
   background: #fff;
   outline: none;
   transition: border-color 0.12s;
-  width: 100px;
+  width: 80px;
 }
 .locationInput:focus { border-color: #1B2B4B; }
 .locationInput::placeholder { color: #A0AEC0; }

@@ -65,8 +65,8 @@ function MusicianCard({ musician, activeParts, onUpdate, onDelete }) {
   return (
     <div className={`${styles.card} ${locked ? styles.cardLocked : ''}`}>
 
-      {/* ── Main row: name · parts (inline) · actions ─────────────── */}
-      <div className={styles.cardHeader}>
+      {/* Left: name */}
+      <div className={styles.cardMain}>
         {locked ? (
           <span className={styles.cardName}>{musician.name}</span>
         ) : (
@@ -79,82 +79,81 @@ function MusicianCard({ musician, activeParts, onUpdate, onDelete }) {
             placeholder="Musician name"
           />
         )}
-
-        {/* Parts sit inline between the name and the action buttons */}
-        <div className={styles.partsRow}>
-          {locked ? (
-            // Read-only chips — only the parts the musician actually plays
-            parts.length > 0
-              ? parts.map(p => <span key={p} className={styles.partChip}>{p}</span>)
-              : <span className={styles.noPartsLabel}>No instruments</span>
-          ) : (
-            // Editable checkbox chips — one per active_part
-            activeParts.map(part => (
-              <label
-                key={part}
-                className={`${styles.partChipCheck} ${parts.includes(part) ? styles.partChipCheckActive : ''}`}
-              >
-                <input
-                  type="checkbox"
-                  className={styles.partCheckbox}
-                  checked={parts.includes(part)}
-                  onChange={() => togglePart(part)}
-                />
-                {part}
-              </label>
-            ))
-          )}
-        </div>
-
-        <div className={styles.cardActions}>
-          <button
-            className={`${styles.lockBtn} ${locked ? styles.lockBtnLocked : ''}`}
-            onClick={toggleLock}
-            title={locked ? 'Locked — click to unlock' : 'Unlocked — click to lock'}
-          >
-            {locked ? '🔒 Locked' : '🔓 Unlocked'}
-          </button>
-          {!locked && (
-            <button
-              className={styles.removeBtn}
-              onClick={() => onDelete(musician.id)}
-              title="Remove musician"
-            >
-              ×
-            </button>
-          )}
-        </div>
       </div>
 
-      {/* ── Location row: city + state ─────────────────────────────── */}
-      {locked ? (
-        (musician.city || musician.state) && (
-          <div className={styles.locationRow}>
+      {/* Center: location */}
+      <div className={styles.cardLocation}>
+        {locked ? (
+          (musician.city || musician.state) && (
             <span className={styles.locationLabel}>
               {[musician.city, musician.state].filter(Boolean).join(', ')}
             </span>
-          </div>
-        )
-      ) : (
-        <div className={styles.locationRow}>
-          <input
-            className={styles.locationInput}
-            value={cityVal}
-            onChange={e => setCityVal(e.target.value)}
-            onBlur={commitCity}
-            onKeyDown={e => { if (e.key === 'Enter') e.target.blur() }}
-            placeholder="City"
-          />
-          <input
-            className={styles.locationInput}
-            value={stateVal}
-            onChange={e => setStateVal(e.target.value)}
-            onBlur={commitState}
-            onKeyDown={e => { if (e.key === 'Enter') e.target.blur() }}
-            placeholder="State"
-          />
-        </div>
-      )}
+          )
+        ) : (
+          <>
+            <input
+              className={styles.locationInput}
+              value={cityVal}
+              onChange={e => setCityVal(e.target.value)}
+              onBlur={commitCity}
+              onKeyDown={e => { if (e.key === 'Enter') e.target.blur() }}
+              placeholder="City"
+            />
+            <input
+              className={styles.locationInput}
+              value={stateVal}
+              onChange={e => setStateVal(e.target.value)}
+              onBlur={commitState}
+              onKeyDown={e => { if (e.key === 'Enter') e.target.blur() }}
+              placeholder="State"
+            />
+          </>
+        )}
+      </div>
+
+      {/* Right: parts/instruments */}
+      <div className={styles.partsRow}>
+        {locked ? (
+          parts.length > 0
+            ? parts.map(p => <span key={p} className={styles.partChip}>{p}</span>)
+            : <span className={styles.noPartsLabel}>No instruments</span>
+        ) : (
+          activeParts.map(part => (
+            <label
+              key={part}
+              className={`${styles.partChipCheck} ${parts.includes(part) ? styles.partChipCheckActive : ''}`}
+            >
+              <input
+                type="checkbox"
+                className={styles.partCheckbox}
+                checked={parts.includes(part)}
+                onChange={() => togglePart(part)}
+              />
+              {part}
+            </label>
+          ))
+        )}
+      </div>
+
+      {/* Actions */}
+      <div className={styles.cardActions}>
+        <button
+          className={`${styles.lockBtn} ${locked ? styles.lockBtnLocked : ''}`}
+          onClick={toggleLock}
+          title={locked ? 'Locked — click to unlock' : 'Unlocked — click to lock'}
+        >
+          {locked ? '🔒' : '🔓'}
+        </button>
+        {!locked && (
+          <button
+            className={styles.removeBtn}
+            onClick={() => onDelete(musician.id)}
+            title="Remove musician"
+          >
+            ×
+          </button>
+        )}
+      </div>
     </div>
   )
 }
