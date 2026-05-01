@@ -392,13 +392,15 @@ function GigList() {
     }
   }, [])
 
-  // Restore scroll position when returning from a gig detail view
+  // Restore scroll position when returning from a gig detail view.
+  // The scroll container is <main> (overflow: auto in App.module.css), not window.
   useEffect(() => {
     if (gigs !== null) {
       const saved = sessionStorage.getItem('gigListScrollY')
       if (saved) {
         sessionStorage.removeItem('gigListScrollY')
-        requestAnimationFrame(() => window.scrollTo(0, parseInt(saved, 10)))
+        const main = document.querySelector('main')
+        if (main) requestAnimationFrame(() => { main.scrollTop = parseInt(saved, 10) })
       }
     }
   }, [gigs])
@@ -733,7 +735,8 @@ function GigList() {
                 key={gig.id}
                 className={styles.gigCard}
                 onClick={() => {
-                  sessionStorage.setItem('gigListScrollY', String(window.scrollY))
+                  const main = document.querySelector('main')
+                  sessionStorage.setItem('gigListScrollY', String(main?.scrollTop ?? 0))
                   navigate('/gigs/' + gig.id)
                 }}
               >
