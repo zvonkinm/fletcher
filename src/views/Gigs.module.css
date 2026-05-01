@@ -325,14 +325,30 @@
   text-overflow: ellipsis;
 }
 
-/* Center column: date · time · venue */
+/* Center column: venue+city/state (top) then date/time (bottom) */
 .gigCardMeta {
   flex: 0 0 210px;
+  min-width: 0;
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
+  flex-direction: column;
+  gap: 1px;
   font-size: 12px;
   color: #4A5568;
+}
+
+.gigCardMetaVenue {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+  color: #2D3748;
+}
+
+.gigCardMetaTime {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #718096;
 }
 
 /* Right column: lineup chips + set counts, takes remaining width */

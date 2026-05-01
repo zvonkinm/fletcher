@@ -378,7 +378,7 @@ function GigList() {
       // financials is needed for the per-year aggregate totals in the list header.
       const [rows, musRows, songRows] = await Promise.all([
         db.exec(
-          'SELECT id, name, band_name, date, time, end_time, venue, setlist, locked, parts, lineup, financials ' +
+          'SELECT id, name, band_name, date, time, end_time, venue, city, state, setlist, locked, parts, lineup, financials ' +
           'FROM gigs ORDER BY date DESC, name ASC'
         ),
         db.exec('SELECT id, name FROM musicians'),
@@ -391,6 +391,17 @@ function GigList() {
       console.error('[Gigs] Failed to load gigs:', err)
     }
   }, [])
+
+  // Restore scroll position when returning from a gig detail view
+  useEffect(() => {
+    if (gigs !== null) {
+      const saved = sessionStorage.getItem('gigListScrollY')
+      if (saved) {
+        sessionStorage.removeItem('gigListScrollY')
+        requestAnimationFrame(() => window.scrollTo(0, parseInt(saved, 10)))
+      }
+    }
+  }, [gigs])
 
   // Build a stable id→name map so parseCardLineup doesn't re-scan the array each render
   const musicianMap = useMemo(() => {
@@ -721,7 +732,10 @@ function GigList() {
               <div
                 key={gig.id}
                 className={styles.gigCard}
-                onClick={() => navigate('/gigs/' + gig.id)}
+                onClick={() => {
+                  sessionStorage.setItem('gigListScrollY', String(window.scrollY))
+                  navigate('/gigs/' + gig.id)
+                }}
               >
                 {/* Left: name + band */}
                 <div className={styles.gigCardMain}>
@@ -736,14 +750,25 @@ function GigList() {
                   )}
                 </div>
 
-                {/* Center: date · time · venue */}
-                {(gig.date || gig.time || gig.end_time || gig.venue) && (
+                {/* Center: venue + city/state on top, date/time below */}
+                {(gig.venue || gig.city || gig.state || gig.date || gig.time || gig.end_time) && (
                   <div className={styles.gigCardMeta}>
-                    {gig.date && <span>{formatDate(gig.date)}</span>}
-                    {formatTimeRange(gig.time, gig.end_time) && (
-                      <span>· {formatTimeRange(gig.time, gig.end_time)}</span>
+                    {(gig.venue || gig.city || gig.state) && (
+                      <span className={styles.gigCardMetaVenue}>
+                        {[
+                          gig.venue,
+                          [gig.city, gig.state].filter(Boolean).join(' '),
+                        ].filter(Boolean).join(', ')}
+                      </span>
                     )}
-                    {gig.venue && <span>· {gig.venue}</span>}
+                    {(gig.date || gig.time || gig.end_time) && (
+                      <span className={styles.gigCardMetaTime}>
+                        {[
+                          gig.date ? formatDate(gig.date) : null,
+                          formatTimeRange(gig.time, gig.end_time) || null,
+                        ].filter(Boolean).join(' · ')}
+                      </span>
+                    )}
                   </div>
                 )}
 
