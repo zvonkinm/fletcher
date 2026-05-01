@@ -8,8 +8,9 @@
 /* ── GigList layout ───────────────────────────────────────────────────────── */
 
 .listContainer {
-  max-width: 840px;
+  max-width: 1400px;
   margin: 0 auto;
+  padding: 0 20px;
 }
 
 .listHeader {
@@ -225,7 +226,7 @@
 .gigCards {
   display: flex;
   flex-direction: column;
-  gap: 16px;   /* gap between year groups */
+  gap: 12px;   /* gap between year groups */
 }
 
 /* ── Year group: heading + cards for one calendar year ────────────────────── */
@@ -233,7 +234,7 @@
 .yearGroup {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
 }
 
 /* Row with the year label and financial aggregate totals */
@@ -279,14 +280,15 @@
 .gigCard {
   background: #fff;
   border: 1px solid #D0D9E8;
-  border-radius: 10px;
-  padding: 14px 20px;
+  border-radius: 8px;
+  padding: 7px 16px;
   cursor: pointer;
   font-family: Arial, sans-serif;
   transition: border-color 0.15s, box-shadow 0.15s;
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  flex-direction: row;
+  align-items: center;
+  gap: 16px;
 }
 
 .gigCard:hover {
@@ -294,43 +296,69 @@
   box-shadow: 0 2px 10px rgba(27, 43, 75, 0.09);
 }
 
+/* Left column: gig name + band name */
+.gigCardMain {
+  flex: 0 0 220px;
+  min-width: 0;
+}
+
 .gigCardTop {
   display: flex;
   align-items: baseline;
-  gap: 10px;
+  gap: 6px;
 }
 
 .gigName {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 700;
   color: #1B2B4B;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .gigBand {
-  font-size: 13px;
+  font-size: 12px;
+  color: #4A5568;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Center column: date · time · venue */
+.gigCardMeta {
+  flex: 0 0 210px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 12px;
   color: #4A5568;
 }
 
-.gigCardMeta {
+/* Right column: lineup chips + set counts, takes remaining width */
+.gigCardRight {
+  flex: 1;
+  min-width: 0;
   display: flex;
-  gap: 6px;
-  font-size: 13px;
-  color: #4A5568;
+  align-items: center;
+  gap: 12px;
 }
 
 .gigCardStats {
+  flex-shrink: 0;
   font-size: 12px;
   color: #A0AEC0;
+  white-space: nowrap;
 }
 
 /* ── Line Up row on gig cards ─────────────────────────────────────────────── */
 
 /* Wrapping row of part chips */
 .gigCardLineup {
+  flex: 1;
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  margin-top: 2px;
 }
 
 /* Assigned part: "Part: Musician Name" in a muted pill */

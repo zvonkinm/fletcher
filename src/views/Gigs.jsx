@@ -723,17 +723,20 @@ function GigList() {
                 className={styles.gigCard}
                 onClick={() => navigate('/gigs/' + gig.id)}
               >
-                <div className={styles.gigCardTop}>
-                  <span className={styles.gigName}>{gig.name}</span>
+                {/* Left: name + band */}
+                <div className={styles.gigCardMain}>
+                  <div className={styles.gigCardTop}>
+                    <span className={styles.gigName}>{gig.name}</span>
+                    {gig.locked === 1 && (
+                      <span className={styles.lockBadge} title="Locked">🔒</span>
+                    )}
+                  </div>
                   {gig.band_name && (
                     <span className={styles.gigBand}>{gig.band_name}</span>
                   )}
-                  {gig.locked === 1 && (
-                    <span className={styles.lockBadge} title="Locked">🔒</span>
-                  )}
                 </div>
 
-                {/* Date · Time(–EndTime) · Venue — shown when at least one field is set */}
+                {/* Center: date · time · venue */}
                 {(gig.date || gig.time || gig.end_time || gig.venue) && (
                   <div className={styles.gigCardMeta}>
                     {gig.date && <span>{formatDate(gig.date)}</span>}
@@ -744,39 +747,38 @@ function GigList() {
                   </div>
                 )}
 
-                {/* Line Up: one chip per active part.
-                    Assigned parts come first (sorted), unassigned parts in red after.
-                    For assigned chips the part name is bold; musician name is normal weight. */}
-                {lineupChips.length > 0 && (
-                  <div className={styles.gigCardLineup}>
-                    {[...lineupChips]
-                      .sort((a, b) => (b.musicianName ? 1 : 0) - (a.musicianName ? 1 : 0))
-                      .map(({ part, musicianName }) => (
-                        <span
-                          key={part}
-                          className={musicianName
-                            ? styles.gigCardLineupChip
-                            : styles.gigCardLineupChipEmpty}
-                          title={musicianName ? undefined : `${part} not yet assigned`}
-                        >
-                          {musicianName
-                            ? <><strong>{part}</strong>{': ' + musicianName}</>
-                            : part}
+                {/* Right: lineup chips + set counts */}
+                <div className={styles.gigCardRight}>
+                  {lineupChips.length > 0 && (
+                    <div className={styles.gigCardLineup}>
+                      {[...lineupChips]
+                        .sort((a, b) => (b.musicianName ? 1 : 0) - (a.musicianName ? 1 : 0))
+                        .map(({ part, musicianName }) => (
+                          <span
+                            key={part}
+                            className={musicianName
+                              ? styles.gigCardLineupChip
+                              : styles.gigCardLineupChipEmpty}
+                            title={musicianName ? undefined : `${part} not yet assigned`}
+                          >
+                            {musicianName
+                              ? <><strong>{part}</strong>{': ' + musicianName}</>
+                              : part}
+                          </span>
+                        ))}
+                    </div>
+                  )}
+                  {setsInfo.length > 0 && (
+                    <div className={styles.gigCardStats}>
+                      {setsInfo.map((s, i) => (
+                        <span key={i}>
+                          {i > 0 && ' · '}
+                          {s.name}: {s.count} song{s.count !== 1 ? 's' : ''}
                         </span>
                       ))}
-                  </div>
-                )}
-
-                {setsInfo.length > 0 && (
-                  <div className={styles.gigCardStats}>
-                    {setsInfo.map((s, i) => (
-                      <span key={i}>
-                        {i > 0 && ' · '}
-                        {s.name}: {s.count} song{s.count !== 1 ? 's' : ''}
-                      </span>
-                    ))}
-                  </div>
-                )}
+                    </div>
+                  )}
+                </div>
               </div>
                 )
               })}

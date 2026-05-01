@@ -140,8 +140,19 @@ export default function Settings() {
     const next = [...activeParts, part]
     setActiveParts(next)
     setNewPartInput('')
-    try { await persistActiveParts(next) }
-    catch (err) { console.error('[Settings] Add part failed:', err); setActiveParts(activeParts) }
+    try {
+      // Freeze any gigs that haven't stored their own parts yet so they don't
+      // automatically pick up the new instrument — users must opt each gig in.
+      const frozen = JSON.stringify(activeParts)
+      await db.run(
+        `UPDATE gigs SET parts = ? WHERE parts IS NULL OR parts = ''`,
+        [frozen]
+      )
+      await persistActiveParts(next)
+    } catch (err) {
+      console.error('[Settings] Add part failed:', err)
+      setActiveParts(activeParts)
+    }
   }
 
   async function handleRemovePart(part) {
