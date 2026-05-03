@@ -330,21 +330,43 @@ function findEntrySetId(sets, entryId) {
 
 // ── GigList helpers ─────────────────────────────────────────────────────────
 
-// Parses a gig card's parts + lineup JSON into an array of { part, musicianName }
-// where musicianName is the assigned musician's name, or null if unassigned.
+// Parses a gig card's parts + lineup JSON into an array of chip entries.
+// Each entry is { parts: string[], musicianName: string|null }.
+// When the same musician is assigned to multiple parts, they are combined into
+// a single entry so the card shows "Clarinet/Tenor Sax: Lyon Graulty" instead
+// of two separate chips.  Unassigned parts stay as individual entries.
 // musicianMap is a Map<id → name> built from the musicians table.
 // Returns [] on any parse error so the card renders without crashing.
 function parseCardLineup(partsJson, lineupJson, musicianMap) {
   try {
-    const parts      = partsJson   ? JSON.parse(partsJson)   : []
-    const lineupData = lineupJson  ? JSON.parse(lineupJson)  : {}
-    return parts.map(part => {
+    const parts      = partsJson  ? JSON.parse(partsJson)  : []
+    const lineupData = lineupJson ? JSON.parse(lineupJson) : {}
+
+    // First pass: bucket parts by assigned musician ID (or null if unassigned).
+    // musicianBuckets is Map<musicianId → string[]> for assigned parts.
+    const musicianBuckets = new Map()
+    const unassigned = []
+
+    for (const part of parts) {
       const assignedId = lineupData[part]?.assigned ?? null
-      return {
-        part,
-        musicianName: assignedId ? (musicianMap.get(assignedId) ?? '?') : null,
+      if (assignedId) {
+        if (!musicianBuckets.has(assignedId)) musicianBuckets.set(assignedId, [])
+        musicianBuckets.get(assignedId).push(part)
+      } else {
+        unassigned.push(part)
       }
-    })
+    }
+
+    // Build result: one chip per musician (possibly multi-part) + one chip per
+    // unassigned part.
+    const result = []
+    for (const [musicianId, partList] of musicianBuckets) {
+      result.push({ parts: partList, musicianName: musicianMap.get(musicianId) ?? '?' })
+    }
+    for (const part of unassigned) {
+      result.push({ parts: [part], musicianName: null })
+    }
+    return result
   } catch {
     return []
   }
@@ -744,9 +766,6 @@ function GigList() {
                 <div className={styles.gigCardMain}>
                   <div className={styles.gigCardTop}>
                     <span className={styles.gigName}>{gig.name}</span>
-                    {gig.locked === 1 && (
-                      <span className={styles.lockBadge} title="Locked">🔒</span>
-                    )}
                   </div>
                   {gig.band_name && (
                     <span className={styles.gigBand}>{gig.band_name}</span>
@@ -758,10 +777,10 @@ function GigList() {
                   <div className={styles.gigCardMeta}>
                     {(gig.venue || gig.city || gig.state) && (
                       <span className={styles.gigCardMetaVenue}>
-                        {[
-                          gig.venue,
-                          [gig.city, gig.state].filter(Boolean).join(' '),
-                        ].filter(Boolean).join(', ')}
+                        {/* Venue name stays bold; city/state is normal weight */}
+                        {gig.venue && <strong>{gig.venue}</strong>}
+                        {gig.venue && (gig.city || gig.state) && ', '}
+                        {[gig.city, gig.state].filter(Boolean).join(' ')}
                       </span>
                     )}
                     {(gig.date || gig.time || gig.end_time) && (
@@ -780,20 +799,26 @@ function GigList() {
                   {lineupChips.length > 0 && (
                     <div className={styles.gigCardLineup}>
                       {[...lineupChips]
+                        // Show assigned chips first, then unassigned (empty) ones
                         .sort((a, b) => (b.musicianName ? 1 : 0) - (a.musicianName ? 1 : 0))
-                        .map(({ part, musicianName }) => (
-                          <span
-                            key={part}
-                            className={musicianName
-                              ? styles.gigCardLineupChip
-                              : styles.gigCardLineupChipEmpty}
-                            title={musicianName ? undefined : `${part} not yet assigned`}
-                          >
-                            {musicianName
-                              ? <><strong>{part}</strong>{': ' + musicianName}</>
-                              : part}
-                          </span>
-                        ))}
+                        .map(({ parts, musicianName }) => {
+                          // Join multiple parts with "/" for multi-instrument musicians
+                          // e.g. ["Clarinet", "Tenor Saxophone"] → "Clarinet/Tenor Saxophone"
+                          const label = parts.join('/')
+                          return (
+                            <span
+                              key={label}
+                              className={musicianName
+                                ? styles.gigCardLineupChip
+                                : styles.gigCardLineupChipEmpty}
+                              title={musicianName ? undefined : `${label} not yet assigned`}
+                            >
+                              {musicianName
+                                ? <><strong>{label}</strong>{': ' + musicianName}</>
+                                : label}
+                            </span>
+                          )
+                        })}
                     </div>
                   )}
                   {setsInfo.length > 0 && (

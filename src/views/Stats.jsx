@@ -39,7 +39,7 @@ function parseSets(raw) {
 }
 
 function isBackupSet(name) {
-  return /backup|alt|alternate|extra/i.test(name)
+  return /backup|alt|alternate|extra|encore/i.test(name)
 }
 
 // ── Sortable column header ───────────────────────────────────────────────────
@@ -288,7 +288,7 @@ export default function Stats() {
         <h3 className={styles.sectionTitle}>Song frequency</h3>
         <p className={styles.sectionHint}>
           Counted once per gig even if a song appears in multiple sets.
-          "Backup" = sets whose name matches backup / alt / alternate / extra.
+          "Backup" = sets whose name matches backup / alt / alternate / extra / encore.
         </p>
         {songStats.length === 0 ? (
           <p className={styles.muted}>No setlist data.</p>

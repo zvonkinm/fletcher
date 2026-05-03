@@ -340,8 +340,8 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-weight: 600;
   color: #2D3748;
+  /* font-weight is normal here; the venue name inside uses <strong> for bold */
 }
 
 .gigCardMetaTime {
@@ -351,27 +351,32 @@
   color: #718096;
 }
 
-/* Right column: lineup chips + set counts, takes remaining width */
+/* Right column: lineup chips stacked above set counts.
+   Column layout keeps stats from overflowing the card when the window is narrow. */
 .gigCardRight {
   flex: 1;
   min-width: 0;
+  overflow: hidden;
   display: flex;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 4px;
 }
 
 .gigCardStats {
-  flex-shrink: 0;
   font-size: 12px;
   color: #A0AEC0;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 /* ── Line Up row on gig cards ─────────────────────────────────────────────── */
 
 /* Wrapping row of part chips */
 .gigCardLineup {
-  flex: 1;
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
